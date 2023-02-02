@@ -1,0 +1,5 @@
+#!/bin/bash
+
+rsync -av site/js server/
+elm make src/SayUncle/Server/Server.elm --output server/server.js
+elm make src/SayUncle/Server/Client.elm --output server/client.js

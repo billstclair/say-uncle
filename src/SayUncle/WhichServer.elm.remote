@@ -1,0 +1,10 @@
+module Agog.WhichServer exposing (serverUrl, isLocal)
+
+
+serverUrl : String
+serverUrl =
+    "wss://agog.ninja/agog-server"
+
+isLocal : Bool
+isLocal =
+    False

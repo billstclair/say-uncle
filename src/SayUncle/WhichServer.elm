@@ -1,0 +1,11 @@
+module Agog.WhichServer exposing (isLocal, serverUrl)
+
+
+serverUrl : String
+serverUrl =
+    "ws://localhost:8081"
+
+
+isLocal : Bool
+isLocal =
+    True
