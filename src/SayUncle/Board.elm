@@ -19,26 +19,23 @@ import Array exposing (Array)
 import Cards exposing (Card)
 import Deck exposing (Deck, ShuffledDeck)
 import Dict exposing (Dict)
-import Html exposing (Html)
+import Html exposing (Html, div, text)
 import List.Extra as LE
 import Random exposing (Seed)
 import SayUncle.Types as Types
     exposing
         ( Board
+        , BoardClick(..)
+        , GameState
+        , Player
+        , PlayerNames
+        , Size
         )
 import Set exposing (Set)
 import Svg
     exposing
         ( Attribute
         , Svg
-        , defs
-        , foreignObject
-        , g
-        , line
-        , marker
-        , path
-        , rect
-        , svg
         )
 import Svg.Attributes as Attributes
     exposing
@@ -206,9 +203,69 @@ lineWidth =
     lineWidthO2 * 2
 
 
-render : msg -> Board -> Html msg
-render clickWrapper board =
-    Html.text ""
+isTableauEmpty : Array (Maybe Card) -> Bool
+isTableauEmpty tableau =
+    let
+        loop : Int -> Bool
+        loop idx =
+            if idx < 0 then
+                True
+
+            else
+                case Array.get idx tableau of
+                    Nothing ->
+                        loop (idx - 1)
+
+                    Just _ ->
+                        False
+    in
+    loop <| Array.length tableau - 1
+
+
+emptyTableau : Array (Maybe Card)
+emptyTableau =
+    Array.empty
+
+
+render : (BoardClick -> msg) -> Size -> GameState -> Html msg
+render wrapper windowSize { board, players, whoseTurn } =
+    let
+        { tableau, stock, turnedStock, hands } =
+            board
+    in
+    div [] <|
+        if isTableauEmpty tableau then
+            let
+                ( stockHtml, y ) =
+                    renderStock wrapper windowSize stock turnedStock
+            in
+            [ stockHtml
+            , renderPlayerHand y wrapper windowSize whoseTurn players hands
+            ]
+
+        else
+            let
+                ( tableauHtml, y ) =
+                    renderTableau wrapper windowSize tableau
+            in
+            [ tableauHtml
+            , renderPlayerHand y wrapper windowSize whoseTurn players hands
+            ]
+
+
+renderTableau : (BoardClick -> msg) -> Size -> Array (Maybe Card) -> ( Html msg, Int )
+renderTableau wrapper windowSize tableau =
+    ( text "", 0 )
+
+
+renderStock : (BoardClick -> msg) -> Size -> ShuffledDeck -> Maybe Card -> ( Html msg, Int )
+renderStock wrapper windowSize stock turnedStock =
+    ( text "", 0 )
+
+
+renderPlayerHand : Int -> (BoardClick -> msg) -> Size -> Player -> PlayerNames -> Array (List Card) -> Html msg
+renderPlayerHand y wrapper windowSize whoseTurn players hands =
+    text ""
 
 
 fontSize : Int -> Int

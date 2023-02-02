@@ -13,6 +13,7 @@
 module SayUncle.Types exposing
     ( ArchivedGame
     , Board
+    , BoardClick(..)
     , ChatSettings
     , GameState
     , InitialBoard
@@ -33,6 +34,7 @@ module SayUncle.Types exposing
     , ServerInterface
     , ServerState
     , Settings
+    , Size
     , Socket
     , StatisticsKeys
     , Style
@@ -73,6 +75,13 @@ import WebSocketFramework.Types
         , ServerUrl
         , Statistics
         )
+
+
+type BoardClick
+    = TableauClick Card
+    | StockClick
+    | TurnedStockClick Card
+    | HandClick Card
 
 
 type alias Board =
@@ -165,6 +174,12 @@ typeToStyle styleType =
 
         CustomStyle style ->
             style
+
+
+type alias Size =
+    { width : Int
+    , height : Int
+    }
 
 
 type alias Settings =
