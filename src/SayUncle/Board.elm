@@ -144,8 +144,34 @@ initial playerCount seed =
         tableauCount =
             playerCount * 5
 
-        ( stock, tableauList ) =
+        ( rawStock, tableauList ) =
             dealLoop tableauCount deck4 []
+
+        rawStockSize =
+            Deck.length rawStock
+
+        stockSize =
+            (rawStockSize // playerCount) * playerCount
+
+        discards =
+            Debug.log "discards" <|
+                rawStockSize
+                    - stockSize
+
+        discardLoop : Int -> ShuffledDeck -> ShuffledDeck
+        discardLoop cnt deck2 =
+            if cnt <= 0 then
+                deck2
+
+            else
+                let
+                    ( _, deck3 ) =
+                        Deck.draw deck2
+                in
+                discardLoop (cnt - 1) deck3
+
+        stock =
+            discardLoop discards rawStock
 
         tableau =
             Array.fromList <| List.map Just tableauList
