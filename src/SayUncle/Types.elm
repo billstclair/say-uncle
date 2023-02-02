@@ -61,6 +61,7 @@ module SayUncle.Types exposing
 
 import Array exposing (Array)
 import Cards exposing (Card)
+import Deck exposing (ShuffledDeck)
 import Dict exposing (Dict)
 import ElmChat
 import Set exposing (Set)
@@ -75,8 +76,8 @@ import WebSocketFramework.Types
 
 
 type alias Board =
-    { tableau : List Card
-    , stock : List Card
+    { tableau : Array (Maybe Card)
+    , stock : ShuffledDeck
     , turnedStock : Maybe Card
     , hands : Array (List Card)
     }

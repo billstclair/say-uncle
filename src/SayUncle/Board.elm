@@ -11,58 +11,21 @@
 
 
 module SayUncle.Board exposing
-    ( areMovesAJump
-    , clear
-    , colToString
-    , computeJumperLocations
-    , computeWinner
-    , count
-    , countColor
-    , empty
-    , findSquareSatisfying
-    , get
-    , illegalRowCol
-    , initial
-    , isRowColLegal
-    , isUniqueMoveTo
-    , mapWholeBoard
-    , mapWholeBoardWithExit
-    , populateLegalMoves
+    ( initial
     , render
-    , rowColToString
-    , rowToString
-    , set
-    , stringToCol
-    , stringToRow
-    , stringToRowCol
     )
 
-import Agog.Types as Types
-    exposing
-        ( Board
-        , Color(..)
-        , GameState
-        , HulkAfterJump(..)
-        , JumpSequence
-        , MovesOrJumps(..)
-        , OneCorruptibleJump
-        , OneJump
-        , OneMove
-        , OneMoveSequence(..)
-        , Piece
-        , PieceType(..)
-        , Player(..)
-        , RowCol
-        , SavedModel
-        , Style
-        , WinReason(..)
-        , Winner(..)
-        )
 import Array exposing (Array)
+import Cards exposing (Card)
+import Deck exposing (Deck, ShuffledDeck)
 import Dict exposing (Dict)
 import Html exposing (Html)
 import List.Extra as LE
 import Random exposing (Seed)
+import SayUncle.Types as Types
+    exposing
+        ( Board
+        )
 import Set exposing (Set)
 import Svg
     exposing
@@ -117,15 +80,83 @@ import Svg.Attributes as Attributes
 import Svg.Events as Events
 
 
-empty : Board
-empty =
-    Array.repeat 8 (Array.repeat 8 Types.emptyPiece)
+mergeDecks : ShuffledDeck -> ShuffledDeck -> ShuffledDeck
+mergeDecks deck1 deck2 =
+    let
+        cards =
+            Deck.getCards deck2
+
+        folder : Card -> ShuffledDeck -> ShuffledDeck
+        folder card deck =
+            Deck.appendCard card deck
+    in
+    List.foldl folder deck1 <| Deck.getCards deck2
 
 
-initial : Board
-initial =
-    -- TODO
-    foo
+initial : Int -> Seed -> ( Board, Seed )
+initial playerCount seed =
+    let
+        deckCount =
+            ((playerCount - 1) // 4) + 1
+
+        deckLoop : Int -> ( ShuffledDeck, Seed ) -> ( ShuffledDeck, Seed )
+        deckLoop cnt ( deck2, seed3 ) =
+            if cnt <= 0 then
+                ( deck2, seed3 )
+
+            else
+                let
+                    ( newDeck, seed4 ) =
+                        Random.step Deck.randomDeck seed3
+                in
+                deckLoop (cnt - 1) ( mergeDecks deck2 newDeck, seed4 )
+
+        ( deck, seed2 ) =
+            deckLoop (deckCount - 1) (Random.step Deck.randomDeck seed)
+
+        dealLoop : Int -> ShuffledDeck -> List Card -> ( ShuffledDeck, List Card )
+        dealLoop cardsLeft deck2 cards =
+            if cardsLeft <= 0 then
+                ( deck2, List.reverse cards )
+
+            else
+                let
+                    ( card, deck3 ) =
+                        Deck.draw deck2
+                in
+                dealLoop (cardsLeft - 1) deck3 <| card :: cards
+
+        handsLoop : Int -> ShuffledDeck -> List (List Card) -> ( ShuffledDeck, Array (List Card) )
+        handsLoop handIdx deck2 cardsList =
+            if handIdx <= 0 then
+                ( deck2, Array.fromList <| List.reverse cardsList )
+
+            else
+                let
+                    ( deck3, cards ) =
+                        dealLoop 5 deck2 []
+                in
+                handsLoop (handIdx - 1) deck3 <| cards :: cardsList
+
+        ( deck4, hands ) =
+            handsLoop playerCount deck []
+
+        tableauCount =
+            playerCount * 5
+
+        ( stock, tableauList ) =
+            dealLoop tableauCount deck4 []
+
+        tableau =
+            Array.fromList <| List.map Just tableauList
+    in
+    ( { tableau = tableau
+      , stock = stock
+      , turnedStock = Nothing
+      , hands = hands
+      }
+    , seed2
+    )
 
 
 
@@ -149,46 +180,9 @@ lineWidth =
     lineWidthO2 * 2
 
 
-render : Style -> Int -> (( Int, Int ) -> msg) -> Maybe Player -> GameState -> Html msg
-render style size tagger player gameState =
-    let
-        board =
-            gameState.board
-
-        whiteSpace =
-            10
-
-        innerSize =
-            size - (2 * whiteSpace)
-
-        sizeS =
-            tos size
-
-        delta =
-            round (toFloat (innerSize - lineWidth) / 8 / sqrt 2)
-
-        center =
-            4 * delta + fontSize delta
-
-        translate =
-            round (toFloat center * (sqrt 2 - 1) / 2) + whiteSpace
-    in
-    svg
-        [ width sizeS
-        , height sizeS
-        ]
-        [ g
-            [ transform
-                ("translate("
-                    ++ tos (whiteSpace + translate)
-                    ++ " "
-                    ++ tos (whiteSpace + translate)
-                    ++ ")"
-                )
-            ]
-            [-- TODO
-            ]
-        ]
+render : msg -> Board -> Html msg
+render clickWrapper board =
+    Html.text ""
 
 
 fontSize : Int -> Int
