@@ -16,7 +16,8 @@ module SayUncle.Board exposing
     )
 
 import Array exposing (Array)
-import Cards exposing (Card)
+import Cards exposing (Card(..), Face(..), Suit(..))
+import CardsView exposing (CardDescription, Size)
 import Deck exposing (Deck, ShuffledDeck)
 import Dict exposing (Dict)
 import Html exposing (Html, div, text)
@@ -37,7 +38,7 @@ import Svg
         ( Attribute
         , Svg
         )
-import Svg.Attributes as Attributes
+import Svg.Attributes as Svga
     exposing
         ( cx
         , cy
@@ -227,6 +228,11 @@ emptyTableau =
     Array.empty
 
 
+br : Html msg
+br =
+    Html.br [] []
+
+
 render : (BoardClick -> msg) -> Size -> GameState -> Html msg
 render wrapper windowSize { board, players, whoseTurn } =
     let
@@ -236,35 +242,119 @@ render wrapper windowSize { board, players, whoseTurn } =
     div [] <|
         if isTableauEmpty tableau then
             let
-                ( stockHtml, y ) =
+                stockHtml =
                     renderStock wrapper windowSize stock turnedStock
             in
             [ stockHtml
-            , renderPlayerHand y wrapper windowSize whoseTurn players hands
+            , br
+            , renderPlayerHand wrapper windowSize whoseTurn players hands
             ]
 
         else
             let
-                ( tableauHtml, y ) =
+                tableauHtml =
                     renderTableau wrapper windowSize tableau
             in
             [ tableauHtml
-            , renderPlayerHand y wrapper windowSize whoseTurn players hands
+            , br
+            , renderPlayerHand wrapper windowSize whoseTurn players hands
             ]
 
 
-renderTableau : (BoardClick -> msg) -> Size -> Array (Maybe Card) -> ( Html msg, Int )
+renderTableau : (BoardClick -> msg) -> Size -> Array (Maybe Card) -> Html msg
 renderTableau wrapper windowSize tableau =
-    ( text "", 0 )
+    let
+        width =
+            (toFloat (windowSize.width - 5) / 10) - 5 |> floor
+
+        height =
+            toFloat width / cardWidthOverHeight |> floor
+
+        loop : Int -> ( Int, Int ) -> List (Svg msg) -> List (Svg msg)
+        loop cnt ( x, y ) res =
+            if cnt < 0 then
+                res
+
+            else
+                let
+                    nextx =
+                        x + width + 5
+
+                    nexty =
+                        if modBy (cnt + 1) 10 == 0 then
+                            y + height + 5
+
+                        else
+                            y
+                in
+                case Array.get cnt tableau of
+                    Just (Just card) ->
+                        let
+                            description =
+                                CardsView.cardToSvg card height
+
+                            cardSvg =
+                                Svg.g
+                                    [ Svga.transform <|
+                                        "translate("
+                                            ++ String.fromInt x
+                                            ++ " "
+                                            ++ String.fromInt y
+                                            ++ ")"
+                                    ]
+                                    [ description.svg ]
+                        in
+                        loop (cnt - 1) ( nextx, nexty ) <| cardSvg :: res
+
+                    _ ->
+                        loop (cnt - 1) ( nextx, nexty ) res
+
+        svgs =
+            loop (Array.length tableau - 1) ( 5, 5 ) []
+
+        totalHeight =
+            (toFloat (Array.length tableau) / 10)
+                |> ceiling
+    in
+    Svg.svg
+        [ Svga.width <| String.fromInt windowSize.width
+        , Svga.height <| String.fromInt totalHeight
+        ]
+    <|
+        svgs
 
 
-renderStock : (BoardClick -> msg) -> Size -> ShuffledDeck -> Maybe Card -> ( Html msg, Int )
+renderStock : (BoardClick -> msg) -> Size -> ShuffledDeck -> Maybe Card -> Html msg
 renderStock wrapper windowSize stock turnedStock =
-    ( text "", 0 )
+    text ""
 
 
-renderPlayerHand : Int -> (BoardClick -> msg) -> Size -> Player -> PlayerNames -> Array (List Card) -> Html msg
-renderPlayerHand y wrapper windowSize whoseTurn players hands =
+cardWidthOverHeight : Float
+cardWidthOverHeight =
+    let
+        aceOfHearts =
+            Card Hearts Ace
+
+        { size } =
+            CardsView.cardToSvg aceOfHearts 500
+
+        { width, height } =
+            size
+    in
+    toFloat width / toFloat height
+
+
+renderPlayerHand : (BoardClick -> msg) -> Size -> Player -> PlayerNames -> Array (List Card) -> Html msg
+renderPlayerHand wrapper windowSize whoseTurn players hands =
+    let
+        playerName =
+            case Dict.get whoseTurn players of
+                Nothing ->
+                    "Player " ++ String.fromInt whoseTurn
+
+                Just name ->
+                    name
+    in
     text ""
 
 
