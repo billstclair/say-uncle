@@ -8,6 +8,7 @@ import Browser.Dom as Dom exposing (Viewport)
 import Browser.Events as Events
 import Cards exposing (Card(..), Face(..), Suit(..))
 import Cmd.Extra exposing (addCmd, withCmd, withCmds, withNoCmd)
+import Dict exposing (Dict)
 import Html
     exposing
         ( Attribute
@@ -78,7 +79,9 @@ import SayUncle.Types as Types
         , Message(..)
         , Player
         , PlayerNames
+        , Score
         , Size
+        , Winner(..)
         )
 import Task
 import Time exposing (Posix)
@@ -103,8 +106,8 @@ subscriptions model =
 
 type alias Model =
     { message : Maybe String
-    , windowSize : ( Int, Int )
-    , board : Board
+    , windowSize : Size
+    , gameState : GameState
     , seed : Seed
     , time : Int
     }
@@ -124,8 +127,15 @@ init _ =
             Board.empty 2
     in
     { message = Nothing
-    , windowSize = ( 1024, 768 )
-    , board = board
+    , windowSize = Size 1024 768
+    , gameState =
+        { board = Board.empty 2 |> Tuple.first
+        , players = Dict.fromList [ ( 0, "Bill" ), ( 2, "Tom" ) ]
+        , whoseTurn = 0
+        , score = Types.zeroScore
+        , winner = NoWinner
+        , private = Types.emptyPrivateGameState
+        }
     , seed = seed
     , time = 0
     }
@@ -148,16 +158,20 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         WindowResize w h ->
-            { model | windowSize = ( w, h ) }
+            { model | windowSize = Size w h }
                 |> withNoCmd
 
         SuffleTheDeck ->
             let
                 ( board, seed ) =
                     Board.initial 2 model.seed
+
+                gameState =
+                    model.gameState
             in
             { model
-                | board = board
+                | gameState =
+                    { gameState | board = board }
                 , seed = seed
             }
                 |> withNoCmd
@@ -171,6 +185,9 @@ update msg model =
                 time =
                     Time.posixToMillis posix
 
+                gameState =
+                    model.gameState
+
                 ( board, seed2 ) =
                     if model.time == 0 then
                         let
@@ -180,11 +197,12 @@ update msg model =
                         Board.initial 2 seed
 
                     else
-                        ( model.board, model.seed )
+                        ( gameState.board, model.seed )
             in
             { model
                 | time = time
-                , board = board
+                , gameState =
+                    { gameState | board = board }
                 , seed = seed2
             }
                 |> withNoCmd
@@ -192,4 +210,4 @@ update msg model =
 
 view : Model -> Html Msg
 view model =
-    text ""
+    Board.render ReceiveClick model.windowSize model.gameState
