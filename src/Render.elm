@@ -167,8 +167,25 @@ update msg model =
             model |> withNoCmd
 
         ReceiveTime posix ->
+            let
+                time =
+                    Time.posixToMillis posix
+
+                ( board, seed2 ) =
+                    if model.time == 0 then
+                        let
+                            seed =
+                                Random.initialSeed time
+                        in
+                        Board.initial 2 seed
+
+                    else
+                        ( model.board, model.seed )
+            in
             { model
-                | time = Time.posixToMillis posix
+                | time = time
+                , board = board
+                , seed = seed2
             }
                 |> withNoCmd
 
