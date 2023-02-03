@@ -289,9 +289,9 @@ renderTableau wrapper windowSize tableau =
                                 Svg.g
                                     [ Svga.transform <|
                                         "translate("
-                                            ++ String.fromInt x
+                                            ++ tos x
                                             ++ " "
-                                            ++ String.fromInt y
+                                            ++ tos y
                                             ++ ")"
                                     ]
                                     [ description.svg ]
@@ -309,8 +309,8 @@ renderTableau wrapper windowSize tableau =
                 |> ceiling
     in
     Svg.svg
-        [ Svga.width <| String.fromInt windowSize.width
-        , Svga.height <| String.fromInt totalHeight
+        [ Svga.width <| tos windowSize.width
+        , Svga.height <| tos totalHeight
         ]
     <|
         svgs
@@ -335,7 +335,74 @@ cardHeightOverWidth =
 
 renderStock : (BoardClick -> msg) -> Size -> ShuffledDeck -> Maybe Card -> Html msg
 renderStock wrapper windowSize stock turnedStock =
-    text ""
+    let
+        cardWidth =
+            windowSize.width // 6
+
+        cardHeight =
+            toFloat cardWidth * cardHeightOverWidth |> ceiling
+
+        x =
+            windowSize.width // 3
+
+        turnedSvg =
+            case turnedStock of
+                Just card ->
+                    let
+                        { svg } =
+                            CardsView.cardToClickableSvg
+                                (wrapper <| TurnedStockClick card)
+                                card
+                                cardHeight
+                    in
+                    svg
+
+                Nothing ->
+                    emptySvg
+
+        emptySvg =
+            Svg.rect
+                [ Svga.width <| tos cardWidth
+                , Svga.height <| tos cardHeight
+                , Svga.ry "15"
+                , Svga.fill "white"
+                , Svga.stroke "black"
+                ]
+                []
+
+        stockSvg =
+            if Deck.length stock == 0 then
+                emptySvg
+
+            else
+                let
+                    { svg } =
+                        CardsView.cardToClickableSvg
+                            (wrapper StockClick)
+                            Back
+                            cardHeight
+                in
+                svg
+    in
+    Svg.svg
+        [ Svga.width <| tos (2 * cardWidth + 10)
+        , Svga.height <| tos (cardHeight + 10)
+        ]
+        [ Svg.g
+            [ Svga.transform <|
+                "translate("
+                    ++ tos cardWidth
+                    ++ " 0)"
+            ]
+            [ stockSvg ]
+        , Svg.g
+            [ Svga.transform <|
+                "translate("
+                    ++ tos (2 * cardWidth + 10)
+                    ++ " 0)"
+            ]
+            [ turnedSvg ]
+        ]
 
 
 renderPlayerHand : (BoardClick -> msg) -> Size -> Player -> PlayerNames -> Array (List Card) -> Html msg
@@ -375,15 +442,15 @@ renderPlayerHand wrapper windowSize whoseTurn players hands =
                                 Svg.g
                                     [ Svga.transform <|
                                         "translate("
-                                            ++ String.fromInt x
+                                            ++ tos x
                                             ++ " 5)"
                                     ]
                                     [ svg ]
                                     :: svgs
             in
             Svg.svg
-                [ Svga.width <| String.fromInt windowSize.width
-                , Svga.height <| String.fromInt (cardHeight + 10)
+                [ Svga.width <| tos windowSize.width
+                , Svga.height <| tos (cardHeight + 10)
                 ]
             <|
                 loop (windowSize.width // 4) cards []
@@ -393,7 +460,7 @@ getPlayerName : Player -> PlayerNames -> String
 getPlayerName player playerNames =
     case Dict.get player playerNames of
         Nothing ->
-            "Player " ++ String.fromInt player
+            "Player " ++ tos player
 
         Just name ->
             name
