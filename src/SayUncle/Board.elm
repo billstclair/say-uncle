@@ -241,21 +241,13 @@ render wrapper windowSize { board, players, whoseTurn } =
     in
     div [] <|
         if isTableauEmpty tableau then
-            let
-                stockHtml =
-                    renderStock wrapper windowSize stock turnedStock
-            in
-            [ stockHtml
+            [ renderStock wrapper windowSize stock turnedStock
             , br
             , renderPlayerHand wrapper windowSize whoseTurn players hands
             ]
 
         else
-            let
-                tableauHtml =
-                    renderTableau wrapper windowSize tableau
-            in
-            [ tableauHtml
+            [ renderTableau wrapper windowSize tableau
             , br
             , renderPlayerHand wrapper windowSize whoseTurn players hands
             ]
@@ -268,7 +260,7 @@ renderTableau wrapper windowSize tableau =
             (toFloat (windowSize.width - 5) / 10) - 5 |> floor
 
         height =
-            toFloat width / cardWidthOverHeight |> floor
+            toFloat width * cardHeightOverWidth |> floor
 
         loop : Int -> ( Int, Int ) -> List (Svg msg) -> List (Svg msg)
         loop cnt ( x, y ) res =
@@ -324,38 +316,87 @@ renderTableau wrapper windowSize tableau =
         svgs
 
 
-renderStock : (BoardClick -> msg) -> Size -> ShuffledDeck -> Maybe Card -> Html msg
-renderStock wrapper windowSize stock turnedStock =
-    text ""
-
-
-cardWidthOverHeight : Float
-cardWidthOverHeight =
+cardSize : Size
+cardSize =
     let
         aceOfHearts =
             Card Hearts Ace
 
         { size } =
             CardsView.cardToSvg aceOfHearts 500
-
-        { width, height } =
-            size
     in
-    toFloat width / toFloat height
+    size
+
+
+cardHeightOverWidth : Float
+cardHeightOverWidth =
+    toFloat cardSize.height / toFloat cardSize.width
+
+
+renderStock : (BoardClick -> msg) -> Size -> ShuffledDeck -> Maybe Card -> Html msg
+renderStock wrapper windowSize stock turnedStock =
+    text ""
 
 
 renderPlayerHand : (BoardClick -> msg) -> Size -> Player -> PlayerNames -> Array (List Card) -> Html msg
 renderPlayerHand wrapper windowSize whoseTurn players hands =
-    let
-        playerName =
-            case Dict.get whoseTurn players of
-                Nothing ->
-                    "Player " ++ String.fromInt whoseTurn
+    case Array.get whoseTurn hands of
+        Nothing ->
+            text ""
 
-                Just name ->
-                    name
-    in
-    text ""
+        Just cards ->
+            let
+                cardWidth =
+                    toFloat windowSize.width / 10
+
+                deltaWidth =
+                    cardWidth / 2 |> ceiling
+
+                cardHeight =
+                    cardWidth * cardHeightOverWidth |> floor
+
+                loop : Int -> List Card -> List (Svg msg) -> List (Svg msg)
+                loop x cardsTail svgs =
+                    case cardsTail of
+                        [] ->
+                            List.reverse svgs
+
+                        card :: rest ->
+                            let
+                                { svg } =
+                                    CardsView.cardToClickableSvg
+                                        (wrapper <| HandClick card)
+                                        card
+                                        cardHeight
+                            in
+                            loop (x + deltaWidth)
+                                rest
+                            <|
+                                Svg.g
+                                    [ Svga.transform <|
+                                        "translate("
+                                            ++ String.fromInt x
+                                            ++ " 5)"
+                                    ]
+                                    [ svg ]
+                                    :: svgs
+            in
+            Svg.svg
+                [ Svga.width <| String.fromInt windowSize.width
+                , Svga.height <| String.fromInt (cardHeight + 10)
+                ]
+            <|
+                loop (windowSize.width // 4) cards []
+
+
+getPlayerName : Player -> PlayerNames -> String
+getPlayerName player playerNames =
+    case Dict.get player playerNames of
+        Nothing ->
+            "Player " ++ String.fromInt player
+
+        Just name ->
+            name
 
 
 fontSize : Int -> Int
