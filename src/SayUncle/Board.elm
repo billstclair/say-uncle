@@ -11,7 +11,8 @@
 
 
 module SayUncle.Board exposing
-    ( initial
+    ( empty
+    , initial
     , render
     )
 
@@ -89,6 +90,11 @@ mergeDecks deck1 deck2 =
             Deck.appendCard card deck
     in
     List.foldl folder deck1 <| Deck.getCards deck2
+
+
+empty : Int -> ( Board, Seed )
+empty playerCount =
+    initial playerCount (Random.initialSeed 0)
 
 
 initial : Int -> Seed -> ( Board, Seed )
