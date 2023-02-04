@@ -3,11 +3,13 @@ module Render exposing (main)
 {-| A quick test of the `Board` rendering code.
 -}
 
+import Array exposing (Array)
 import Browser
 import Browser.Dom as Dom exposing (Viewport)
 import Browser.Events as Events
 import Cards exposing (Card(..), Face(..), Suit(..))
 import Cmd.Extra exposing (addCmd, withCmd, withCmds, withNoCmd)
+import Deck exposing (ShuffledDeck)
 import Dict exposing (Dict)
 import Html
     exposing
@@ -69,6 +71,7 @@ import Html.Attributes
         , width
         )
 import Html.Events exposing (onCheck, onClick, onInput, onMouseDown)
+import Html.Lazy as Lazy
 import Random exposing (Seed)
 import SayUncle.Board as Board
 import SayUncle.Types as Types
@@ -104,12 +107,23 @@ subscriptions model =
         ]
 
 
+type State
+    = TableauState
+    | TurnStockState
+    | ChooseStockState
+    | DiscardState
+    | ScoreState
+
+
 type alias Model =
     { message : Maybe String
     , windowSize : Size
     , gameState : GameState
     , seed : Seed
     , time : Int
+    , whoseTurn : Player
+    , playerNames : PlayerNames
+    , state : State
     }
 
 
@@ -138,6 +152,9 @@ init _ =
         }
     , seed = seed
     , time = 0
+    , whoseTurn = 0
+    , playerNames = Dict.fromList [ ( 0, "Bill" ), ( 1, "Tom" ) ]
+    , state = TableauState
     }
         |> withCmds
             [ Task.perform ReceiveTime Time.now
@@ -154,11 +171,30 @@ getViewport viewport =
     WindowResize (round vp.width) (round vp.height)
 
 
+nextPlayer : Model -> Model
+nextPlayer model =
+    let
+        whoseTurn =
+            model.whoseTurn
+
+        maxPlayer =
+            Dict.size model.playerNames - 1
+    in
+    { model
+        | whoseTurn =
+            if whoseTurn >= maxPlayer then
+                0
+
+            else
+                whoseTurn + 1
+    }
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         WindowResize w h ->
-            { model | windowSize = Size w h }
+            { model | windowSize = Debug.log "WindowResize" <| Size w h }
                 |> withNoCmd
 
         SuffleTheDeck ->
@@ -177,37 +213,149 @@ update msg model =
                 |> withNoCmd
 
         ReceiveClick click ->
-            -- TODO
-            model |> withNoCmd
+            let
+                gameState =
+                    model.gameState
+
+                board =
+                    gameState.board
+
+                whoseTurn =
+                    model.whoseTurn
+            in
+            case click of
+                TableauClick card ->
+                    case Array.get whoseTurn board.hands of
+                        Nothing ->
+                            model |> withNoCmd
+
+                        Just cards ->
+                            let
+                                tableau =
+                                    Array.map
+                                        (\maybeCard ->
+                                            if Just card == maybeCard then
+                                                Nothing
+
+                                            else
+                                                maybeCard
+                                        )
+                                        board.tableau
+
+                                newBoard =
+                                    { board
+                                        | tableau = tableau
+                                        , hands =
+                                            Array.set whoseTurn
+                                                (Board.sortCards <| card :: cards)
+                                                board.hands
+                                    }
+                            in
+                            { model
+                                | gameState =
+                                    { gameState | board = newBoard }
+                                , state =
+                                    if Board.isTableauEmpty tableau then
+                                        TurnStockState
+
+                                    else
+                                        model.state
+                            }
+                                |> nextPlayer
+                                |> withNoCmd
+
+                StockClick ->
+                    case model.state of
+                        ChooseStockState ->
+                            nextPlayer model
+                                |> withNoCmd
+
+                        TurnStockState ->
+                            let
+                                ( card, newStock ) =
+                                    Deck.draw board.stock
+                            in
+                            if card == Back then
+                                -- can't happen
+                                model |> withNoCmd
+
+                            else
+                                { model
+                                    | state = ChooseStockState
+                                    , gameState =
+                                        { gameState
+                                            | board =
+                                                { board
+                                                    | stock = newStock
+                                                    , turnedStock = Just card
+                                                }
+                                        }
+                                }
+                                    |> withNoCmd
+
+                        _ ->
+                            model |> withNoCmd
+
+                TurnedStockClick card ->
+                    if model.state /= ChooseStockState then
+                        model |> withNoCmd
+
+                    else
+                        -- TODO
+                        model |> withNoCmd
+
+                HandClick card ->
+                    model |> withNoCmd
 
         ReceiveTime posix ->
             let
                 time =
                     Time.posixToMillis posix
 
-                gameState =
-                    model.gameState
-
-                ( board, seed2 ) =
+                ( gameState, seed2 ) =
                     if model.time == 0 then
                         let
                             seed =
                                 Random.initialSeed time
+
+                            gs =
+                                model.gameState
+
+                            ( board, seed3 ) =
+                                Board.initial 2 seed
                         in
-                        Board.initial 2 seed
+                        ( { gs | board = board }
+                        , seed3
+                        )
 
                     else
-                        ( gameState.board, model.seed )
+                        ( model.gameState, model.seed )
             in
             { model
                 | time = time
-                , gameState =
-                    { gameState | board = board }
+                , gameState = gameState
                 , seed = seed2
             }
                 |> withNoCmd
 
 
+br : Html msg
+br =
+    Html.br [] []
+
+
 view : Model -> Html Msg
 view model =
-    Board.render ReceiveClick model.windowSize model.gameState
+    div []
+        [ Lazy.lazy3 (Board.render ReceiveClick)
+            model.windowSize
+            model.whoseTurn
+            model.gameState
+        , div
+            [ style "width" "100%"
+            , style "margin" "auto"
+            , style "text-align" "center"
+            , style "font-weight" "bold"
+            ]
+            [ text <| Board.getPlayerName model.whoseTurn model.playerNames ]
+        ]

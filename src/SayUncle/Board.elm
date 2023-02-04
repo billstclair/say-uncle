@@ -12,8 +12,11 @@
 
 module SayUncle.Board exposing
     ( empty
+    , getPlayerName
     , initial
+    , isTableauEmpty
     , render
+    , sortCards
     )
 
 import Array exposing (Array)
@@ -76,7 +79,7 @@ import Svg.Attributes as Svga
         , y1
         , y2
         )
-import Svg.Events as Events
+import Svg.Events as Svge
 
 
 mergeDecks : ShuffledDeck -> ShuffledDeck -> ShuffledDeck
@@ -121,7 +124,7 @@ initial playerCount seed =
         dealLoop : Int -> ShuffledDeck -> List Card -> ( ShuffledDeck, List Card )
         dealLoop cardsLeft deck2 cards =
             if cardsLeft <= 0 then
-                ( deck2, List.reverse cards )
+                ( deck2, sortCards cards )
 
             else
                 let
@@ -212,21 +215,9 @@ lineWidth =
 
 isTableauEmpty : Array (Maybe Card) -> Bool
 isTableauEmpty tableau =
-    let
-        loop : Int -> Bool
-        loop idx =
-            if idx < 0 then
-                True
-
-            else
-                case Array.get idx tableau of
-                    Nothing ->
-                        loop (idx - 1)
-
-                    Just _ ->
-                        False
-    in
-    loop <| Array.length tableau - 1
+    Array.toList tableau
+        |> List.filterMap identity
+        |> (==) []
 
 
 emptyTableau : Array (Maybe Card)
@@ -239,8 +230,8 @@ br =
     Html.br [] []
 
 
-render : (BoardClick -> msg) -> Size -> GameState -> Html msg
-render wrapper windowSize { board, players, whoseTurn } =
+render : (BoardClick -> msg) -> Size -> Player -> GameState -> Html msg
+render wrapper windowSize player { board, players } =
     let
         { tableau, stock, turnedStock, hands } =
             board
@@ -249,24 +240,24 @@ render wrapper windowSize { board, players, whoseTurn } =
         if isTableauEmpty tableau then
             [ renderStock wrapper windowSize stock turnedStock
             , br
-            , renderPlayerHand wrapper windowSize whoseTurn players hands
+            , renderPlayerHand wrapper windowSize player players hands
             ]
 
         else
             [ renderTableau wrapper windowSize tableau
             , br
-            , renderPlayerHand wrapper windowSize whoseTurn players hands
+            , renderPlayerHand wrapper windowSize player players hands
             ]
 
 
 renderTableau : (BoardClick -> msg) -> Size -> Array (Maybe Card) -> Html msg
 renderTableau wrapper windowSize tableau =
     let
-        width =
+        cardWidth =
             (toFloat (windowSize.width - 5) / 10) - 5 |> floor
 
-        height =
-            toFloat width * cardHeightOverWidth |> floor
+        cardHeight =
+            toFloat cardWidth * cardHeightOverWidth |> floor
 
         loop : Int -> ( Int, Int ) -> List (Svg msg) -> List (Svg msg)
         loop cnt ( x, y ) res =
@@ -276,11 +267,11 @@ renderTableau wrapper windowSize tableau =
             else
                 let
                     nextx =
-                        x + width + 5
+                        x + cardWidth + 5
 
                     nexty =
-                        if modBy (cnt + 1) 10 == 0 then
-                            y + height + 5
+                        if modBy 10 cnt == 0 then
+                            y + cardHeight + 5
 
                         else
                             y
@@ -289,7 +280,10 @@ renderTableau wrapper windowSize tableau =
                     Just (Just card) ->
                         let
                             description =
-                                CardsView.cardToSvg card height
+                                CardsView.cardToClickableSvg
+                                    (wrapper <| TableauClick card)
+                                    card
+                                    cardHeight
 
                             cardSvg =
                                 Svg.g
@@ -311,8 +305,12 @@ renderTableau wrapper windowSize tableau =
             loop (Array.length tableau - 1) ( 5, 5 ) []
 
         totalHeight =
-            (toFloat (Array.length tableau) / 10)
-                |> ceiling
+            (cardHeight
+                * ((toFloat (Array.length tableau) / 10)
+                    |> ceiling
+                  )
+            )
+                + 10
     in
     Svg.svg
         [ Svga.width <| tos windowSize.width
@@ -342,13 +340,16 @@ cardHeightOverWidth =
 renderStock : (BoardClick -> msg) -> Size -> ShuffledDeck -> Maybe Card -> Html msg
 renderStock wrapper windowSize stock turnedStock =
     let
+        s =
+            Debug.log "renderStock" ( turnedStock, stock )
+
         cardWidth =
             windowSize.width // 6
 
         cardHeight =
             toFloat cardWidth * cardHeightOverWidth |> ceiling
 
-        x =
+        initialX =
             windowSize.width // 3
 
         turnedSvg =
@@ -364,21 +365,32 @@ renderStock wrapper windowSize stock turnedStock =
                     svg
 
                 Nothing ->
-                    emptySvg
+                    emptySvg Nothing
 
-        emptySvg =
+        emptySvg maybeClick =
             Svg.rect
-                [ Svga.width <| tos cardWidth
-                , Svga.height <| tos cardHeight
-                , Svga.ry "15"
-                , Svga.fill "white"
-                , Svga.stroke "black"
-                ]
+                (List.concat
+                    [ [ Svga.width (tos <| cardWidth - 2)
+                      , Svga.height (tos <| cardHeight - 2)
+                      , Svga.x "1"
+                      , Svga.y "1"
+                      , Svga.ry "15"
+                      , Svga.fill "white"
+                      , Svga.stroke "black"
+                      ]
+                    , case maybeClick of
+                        Nothing ->
+                            []
+
+                        Just click ->
+                            [ Svge.onClick <| wrapper click ]
+                    ]
+                )
                 []
 
         stockSvg =
             if Deck.length stock == 0 then
-                emptySvg
+                emptySvg <| Just StockClick
 
             else
                 let
@@ -391,20 +403,20 @@ renderStock wrapper windowSize stock turnedStock =
                 svg
     in
     Svg.svg
-        [ Svga.width <| tos (2 * cardWidth + 10)
+        [ Svga.width <| tos (initialX + (2 * cardWidth + 10))
         , Svga.height <| tos (cardHeight + 10)
         ]
         [ Svg.g
             [ Svga.transform <|
                 "translate("
-                    ++ tos cardWidth
+                    ++ tos initialX
                     ++ " 0)"
             ]
             [ stockSvg ]
         , Svg.g
             [ Svga.transform <|
                 "translate("
-                    ++ tos (2 * cardWidth + 10)
+                    ++ tos (initialX + cardWidth + 5)
                     ++ " 0)"
             ]
             [ turnedSvg ]
@@ -412,21 +424,27 @@ renderStock wrapper windowSize stock turnedStock =
 
 
 renderPlayerHand : (BoardClick -> msg) -> Size -> Player -> PlayerNames -> Array (List Card) -> Html msg
-renderPlayerHand wrapper windowSize whoseTurn players hands =
-    case Array.get whoseTurn hands of
+renderPlayerHand wrapper windowSize player players hands =
+    case Array.get player hands of
         Nothing ->
             text ""
 
         Just cards ->
             let
+                fractionShown =
+                    0.36
+
                 cardWidth =
-                    toFloat windowSize.width / 10
+                    windowSize.width // 10
 
                 deltaWidth =
-                    cardWidth / 2 |> ceiling
+                    toFloat cardWidth * fractionShown |> ceiling
+
+                startX =
+                    (windowSize.width - (9 * deltaWidth + cardWidth)) // 2
 
                 cardHeight =
-                    cardWidth * cardHeightOverWidth |> floor
+                    toFloat cardWidth * cardHeightOverWidth |> floor
 
                 loop : Int -> List Card -> List (Svg msg) -> List (Svg msg)
                 loop x cardsTail svgs =
@@ -459,7 +477,7 @@ renderPlayerHand wrapper windowSize whoseTurn players hands =
                 , Svga.height <| tos (cardHeight + 10)
                 ]
             <|
-                loop (windowSize.width // 4) cards []
+                loop startX cards []
 
 
 getPlayerName : Player -> PlayerNames -> String
@@ -470,6 +488,90 @@ getPlayerName player playerNames =
 
         Just name ->
             name
+
+
+suitIdx : Suit -> Int
+suitIdx suit =
+    case suit of
+        Clubs ->
+            0
+
+        Diamonds ->
+            1
+
+        Hearts ->
+            2
+
+        Spades ->
+            3
+
+
+suitOrder : Suit -> Suit -> Order
+suitOrder suit1 suit2 =
+    let
+        idx1 =
+            suitIdx suit1
+
+        idx2 =
+            suitIdx suit2
+    in
+    if idx1 < idx2 then
+        LT
+
+    else if idx1 == idx2 then
+        EQ
+
+    else
+        GT
+
+
+faceOrder : Face -> Face -> Order
+faceOrder face1 face2 =
+    let
+        default1 =
+            Cards.defaultFace face1
+
+        default2 =
+            Cards.defaultFace face2
+    in
+    if default1 < default2 then
+        LT
+
+    else if default1 == default2 then
+        EQ
+
+    else
+        GT
+
+
+cardOrder : Card -> Card -> Order
+cardOrder card1 card2 =
+    case card1 of
+        Back ->
+            case card2 of
+                Back ->
+                    EQ
+
+                _ ->
+                    LT
+
+        Card suit1 face1 ->
+            case card2 of
+                Back ->
+                    GT
+
+                Card suit2 face2 ->
+                    case suitOrder suit1 suit2 of
+                        EQ ->
+                            faceOrder face1 face2
+
+                        order ->
+                            order
+
+
+sortCards : List Card -> List Card
+sortCards cards =
+    List.sortWith cardOrder cards
 
 
 fontSize : Int -> Int
