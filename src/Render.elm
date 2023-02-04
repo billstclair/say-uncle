@@ -84,6 +84,7 @@ import SayUncle.Types as Types
         , PlayerNames
         , Score
         , Size
+        , State(..)
         , Winner(..)
         )
 import Task
@@ -107,23 +108,12 @@ subscriptions model =
         ]
 
 
-type State
-    = TableauState
-    | TurnStockState
-    | ChooseStockState
-    | DiscardState
-    | ScoreState
-
-
 type alias Model =
     { message : Maybe String
     , windowSize : Size
     , gameState : GameState
     , seed : Seed
     , time : Int
-    , whoseTurn : Player
-    , playerNames : PlayerNames
-    , state : State
     }
 
 
@@ -144,17 +134,16 @@ init _ =
     , windowSize = Size 1024 768
     , gameState =
         { board = Board.empty 2 |> Tuple.first
-        , players = Dict.fromList [ ( 0, "Bill" ), ( 2, "Tom" ) ]
+        , players = Dict.fromList [ ( 0, "Bill" ), ( 1, "Tom" ) ]
         , whoseTurn = 0
+        , player = 0
+        , state = TableauState
         , score = Types.zeroScore
         , winner = NoWinner
         , private = Types.emptyPrivateGameState
         }
     , seed = seed
     , time = 0
-    , whoseTurn = 0
-    , playerNames = Dict.fromList [ ( 0, "Bill" ), ( 1, "Tom" ) ]
-    , state = TableauState
     }
         |> withCmds
             [ Task.perform ReceiveTime Time.now
@@ -171,27 +160,40 @@ getViewport viewport =
     WindowResize (round vp.width) (round vp.height)
 
 
-nextPlayer : Model -> Model
-nextPlayer model =
+nextPlayer : Player -> PlayerNames -> Player
+nextPlayer player players =
     let
-        whoseTurn =
-            model.whoseTurn
-
         maxPlayer =
-            Dict.size model.playerNames - 1
+            Dict.size players - 1
+    in
+    if player >= maxPlayer then
+        0
+
+    else
+        player + 1
+
+
+setNextPlayer : Model -> Model
+setNextPlayer model =
+    let
+        gameState =
+            model.gameState
     in
     { model
-        | whoseTurn =
-            if whoseTurn >= maxPlayer then
-                0
-
-            else
-                whoseTurn + 1
+        | gameState =
+            { gameState
+                | player =
+                    nextPlayer gameState.player gameState.players
+            }
     }
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
+    let
+        gameState =
+            model.gameState
+    in
     case msg of
         WindowResize w h ->
             { model | windowSize = Debug.log "WindowResize" <| Size w h }
@@ -201,9 +203,6 @@ update msg model =
             let
                 ( board, seed ) =
                     Board.initial 2 model.seed
-
-                gameState =
-                    model.gameState
             in
             { model
                 | gameState =
@@ -214,18 +213,18 @@ update msg model =
 
         ReceiveClick click ->
             let
-                gameState =
-                    model.gameState
-
                 board =
                     gameState.board
 
                 whoseTurn =
-                    model.whoseTurn
+                    gameState.whoseTurn
+
+                player =
+                    gameState.player
             in
             case click of
                 TableauClick card ->
-                    case Array.get whoseTurn board.hands of
+                    case Array.get player board.hands of
                         Nothing ->
                             model |> withNoCmd
 
@@ -246,29 +245,56 @@ update msg model =
                                     { board
                                         | tableau = tableau
                                         , hands =
-                                            Array.set whoseTurn
+                                            Array.set player
                                                 (Board.sortCards <| card :: cards)
                                                 board.hands
                                     }
                             in
                             { model
                                 | gameState =
-                                    { gameState | board = newBoard }
-                                , state =
-                                    if Board.isTableauEmpty tableau then
-                                        TurnStockState
+                                    { gameState
+                                        | board = newBoard
+                                        , state =
+                                            if Board.isTableauEmpty tableau then
+                                                TurnStockState
 
-                                    else
-                                        model.state
+                                            else
+                                                model.gameState.state
+                                    }
                             }
-                                |> nextPlayer
+                                |> setNextPlayer
                                 |> withNoCmd
 
                 StockClick ->
-                    case model.state of
+                    case gameState.state of
                         ChooseStockState ->
-                            nextPlayer model
-                                |> withNoCmd
+                            let
+                                mdl =
+                                    setNextPlayer model
+                            in
+                            if mdl.gameState.player == mdl.gameState.whoseTurn then
+                                let
+                                    mdl2 =
+                                        setNextPlayer mdl
+
+                                    gs =
+                                        mdl2.gameState
+                                in
+                                { mdl2
+                                    | gameState =
+                                        { gs
+                                            | whoseTurn = gs.player
+                                            , state = TurnStockState
+                                            , board =
+                                                { board
+                                                    | turnedStock = Nothing
+                                                }
+                                        }
+                                }
+                                    |> withNoCmd
+
+                            else
+                                mdl |> withNoCmd
 
                         TurnStockState ->
                             let
@@ -281,10 +307,10 @@ update msg model =
 
                             else
                                 { model
-                                    | state = ChooseStockState
-                                    , gameState =
+                                    | gameState =
                                         { gameState
-                                            | board =
+                                            | state = ChooseStockState
+                                            , board =
                                                 { board
                                                     | stock = newStock
                                                     , turnedStock = Just card
@@ -297,22 +323,82 @@ update msg model =
                             model |> withNoCmd
 
                 TurnedStockClick card ->
-                    if model.state /= ChooseStockState then
+                    if gameState.state /= ChooseStockState then
                         model |> withNoCmd
 
                     else
-                        -- TODO
-                        model |> withNoCmd
+                        let
+                            hands =
+                                board.hands
+
+                            newBoard =
+                                case Array.get player hands of
+                                    Nothing ->
+                                        board
+
+                                    Just cards ->
+                                        let
+                                            newCards =
+                                                card :: cards |> Board.sortCards
+                                        in
+                                        { board
+                                            | hands =
+                                                Array.set player newCards hands
+                                            , turnedStock = Nothing
+                                        }
+                        in
+                        { model
+                            | gameState =
+                                { gameState
+                                    | board = newBoard
+                                    , state = DiscardState
+                                }
+                        }
+                            |> withNoCmd
 
                 HandClick card ->
-                    model |> withNoCmd
+                    if gameState.state /= DiscardState then
+                        model |> withNoCmd
+
+                    else
+                        let
+                            hands =
+                                board.hands
+                        in
+                        case Array.get player hands of
+                            Nothing ->
+                                model |> withNoCmd
+
+                            Just cards ->
+                                let
+                                    newCards =
+                                        List.filter ((/=) card) cards
+
+                                    newWhoseTurn =
+                                        nextPlayer whoseTurn
+                                            gameState.players
+                                in
+                                { model
+                                    | gameState =
+                                        { gameState
+                                            | board =
+                                                { board
+                                                    | hands =
+                                                        Array.set player newCards hands
+                                                }
+                                            , whoseTurn = newWhoseTurn
+                                            , player = newWhoseTurn
+                                            , state = TurnStockState
+                                        }
+                                }
+                                    |> withNoCmd
 
         ReceiveTime posix ->
             let
                 time =
                     Time.posixToMillis posix
 
-                ( gameState, seed2 ) =
+                ( gameState2, seed2 ) =
                     if model.time == 0 then
                         let
                             seed =
@@ -329,11 +415,11 @@ update msg model =
                         )
 
                     else
-                        ( model.gameState, model.seed )
+                        ( gameState, model.seed )
             in
             { model
                 | time = time
-                , gameState = gameState
+                , gameState = gameState2
                 , seed = seed2
             }
                 |> withNoCmd
@@ -346,10 +432,14 @@ br =
 
 view : Model -> Html Msg
 view model =
+    let
+        gameState =
+            model.gameState
+    in
     div []
         [ Lazy.lazy3 (Board.render ReceiveClick)
             model.windowSize
-            model.whoseTurn
+            model.gameState.player
             model.gameState
         , div
             [ style "width" "100%"
@@ -357,5 +447,5 @@ view model =
             , style "text-align" "center"
             , style "font-weight" "bold"
             ]
-            [ text <| Board.getPlayerName model.whoseTurn model.playerNames ]
+            [ text <| Board.getPlayerName gameState.player gameState.players ]
         ]

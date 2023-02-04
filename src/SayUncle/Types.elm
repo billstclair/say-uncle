@@ -36,6 +36,7 @@ module SayUncle.Types exposing
     , Settings
     , Size
     , Socket
+    , State(..)
     , StatisticsKeys
     , Style
     , StyleType(..)
@@ -260,10 +261,20 @@ type alias InitialBoard =
     }
 
 
+type State
+    = TableauState
+    | TurnStockState
+    | ChooseStockState
+    | DiscardState
+    | ScoreState
+
+
 type alias GameState =
     { board : Board
     , players : PlayerNames
     , whoseTurn : Player
+    , player : Player
+    , state : State
     , score : Score
     , winner : Winner
     , private : PrivateGameState --not sent over the wire
