@@ -254,8 +254,18 @@ render wrapper windowSize player { board, players } =
 renderTableau : (BoardClick -> msg) -> Size -> Array (Maybe Card) -> Html msg
 renderTableau wrapper windowSize tableau =
     let
+        ( cardsPerRow, marginx ) =
+            if windowSize.width * 3 < windowSize.height * 2 then
+                ( 5, windowSize.width // 6 )
+
+            else
+                ( 10, 5 )
+
+        windowWidth =
+            windowSize.width - 2 * marginx
+
         cardWidth =
-            (toFloat (windowSize.width - 5) / 10) - 5 |> floor
+            (toFloat windowWidth / cardsPerRow) - 5 |> floor
 
         cardHeight =
             toFloat cardWidth * cardHeightOverWidth |> floor
@@ -267,15 +277,12 @@ renderTableau wrapper windowSize tableau =
 
             else
                 let
-                    nextx =
-                        x + cardWidth + 5
-
-                    nexty =
-                        if modBy 10 cnt == 0 then
-                            y + cardHeight + 5
+                    ( nextx, nexty ) =
+                        if modBy cardsPerRow cnt == 0 then
+                            ( marginx, y + cardHeight + 5 )
 
                         else
-                            y
+                            ( x + cardWidth + 5, y )
                 in
                 case Array.get cnt tableau of
                     Just (Just card) ->
@@ -303,11 +310,11 @@ renderTableau wrapper windowSize tableau =
                         loop (cnt - 1) ( nextx, nexty ) res
 
         svgs =
-            loop (Array.length tableau - 1) ( 5, 5 ) []
+            loop (Array.length tableau - 1) ( marginx, 5 ) []
 
         totalHeight =
             (cardHeight
-                * ((toFloat (Array.length tableau) / 10)
+                * ((toFloat (Array.length tableau) / cardsPerRow)
                     |> ceiling
                   )
             )
