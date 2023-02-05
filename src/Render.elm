@@ -493,7 +493,10 @@ view model =
                 text ""
 
             Just message ->
-                p [ style "color" "red" ]
+                p
+                    [ style "color" "red"
+                    , style "text-align" "center"
+                    ]
                     [ text message ]
         , Lazy.lazy3 (Board.render ReceiveClick)
             model.windowSize
