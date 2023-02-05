@@ -435,17 +435,36 @@ view model =
     let
         gameState =
             model.gameState
+
+        board =
+            gameState.board
+
+        playerNameHtml player =
+            text <| Board.getPlayerName player gameState.players
+
+        playerNameDiv player =
+            div
+                [ style "width" "100%"
+                , style "margin" "auto"
+                , style "text-align" "center"
+                , style "font-weight" "bold"
+                ]
+                [ playerNameHtml player ]
+
+        otherPlayer =
+            nextPlayer gameState.player gameState.players
     in
     div []
         [ Lazy.lazy3 (Board.render ReceiveClick)
             model.windowSize
             model.gameState.player
             model.gameState
-        , div
-            [ style "width" "100%"
-            , style "margin" "auto"
-            , style "text-align" "center"
-            , style "font-weight" "bold"
-            ]
-            [ text <| Board.getPlayerName gameState.player gameState.players ]
+        , playerNameDiv gameState.player
+        , br
+        , Board.renderPlayerHand ReceiveClick
+            model.windowSize
+            otherPlayer
+            gameState.players
+            board.hands
+        , playerNameDiv otherPlayer
         ]

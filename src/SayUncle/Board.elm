@@ -16,6 +16,7 @@ module SayUncle.Board exposing
     , initial
     , isTableauEmpty
     , render
+    , renderPlayerHand
     , sortCards
     )
 
