@@ -463,6 +463,11 @@ br =
     Html.br [] []
 
 
+center : List (Attribute msg) -> List (Html msg) -> Html msg
+center =
+    Html.node "center"
+
+
 view : Model -> Html Msg
 view model =
     let
@@ -510,4 +515,16 @@ view model =
             gameState.players
             board.hands
         , playerNameDiv otherPlayer
+        , center []
+            [ h2 [] [ text "Say Uncle" ]
+            , text "designed by Christopher St. Clair"
+            , br
+            , text "Copyright 2023, Bill St. Clair"
+            , br
+            , a
+                [ href "https://github.com/billstclair/say-uncle"
+                , target "_blank"
+                ]
+                [ text "GitHub" ]
+            ]
         ]
