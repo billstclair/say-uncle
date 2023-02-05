@@ -124,13 +124,18 @@ type Msg
     | ReceiveTime Posix
 
 
+initialMessage : String
+initialMessage =
+    "Click a Tableau card to add it to your hand."
+
+
 init : () -> ( Model, Cmd Msg )
 init _ =
     let
         ( board, seed ) =
             Board.empty 2
     in
-    { message = Nothing
+    { message = Just initialMessage
     , windowSize = Size 1024 768
     , gameState =
         { board = Board.empty 2 |> Tuple.first
@@ -188,6 +193,21 @@ setNextPlayer model =
     }
 
 
+turnStockMessage : String
+turnStockMessage =
+    "Click the stock to turn over the top card."
+
+
+chooseStockMessage : String
+chooseStockMessage =
+    "Click the card to add it to your hand. Click the pile to pass."
+
+
+discardMessage : String
+discardMessage =
+    "Click a card in your hand to discard."
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     let
@@ -205,7 +225,8 @@ update msg model =
                     Board.initial 2 model.seed
             in
             { model
-                | gameState =
+                | message = Just initialMessage
+                , gameState =
                     { gameState | board = board }
                 , seed = seed
             }
@@ -249,17 +270,22 @@ update msg model =
                                                 (Board.sortCards <| card :: cards)
                                                 board.hands
                                     }
+
+                                ( message, state ) =
+                                    if Board.isTableauEmpty tableau then
+                                        ( Just turnStockMessage
+                                        , TurnStockState
+                                        )
+
+                                    else
+                                        ( model.message, gameState.state )
                             in
                             { model
-                                | gameState =
+                                | message = message
+                                , gameState =
                                     { gameState
                                         | board = newBoard
-                                        , state =
-                                            if Board.isTableauEmpty tableau then
-                                                TurnStockState
-
-                                            else
-                                                model.gameState.state
+                                        , state = state
                                     }
                             }
                                 |> setNextPlayer
@@ -281,7 +307,8 @@ update msg model =
                                         mdl2.gameState
                                 in
                                 { mdl2
-                                    | gameState =
+                                    | message = Just turnStockMessage
+                                    , gameState =
                                         { gs
                                             | whoseTurn = gs.player
                                             , state = TurnStockState
@@ -307,7 +334,9 @@ update msg model =
 
                             else
                                 { model
-                                    | gameState =
+                                    | message =
+                                        Just chooseStockMessage
+                                    , gameState =
                                         { gameState
                                             | state = ChooseStockState
                                             , board =
@@ -348,7 +377,9 @@ update msg model =
                                         }
                         in
                         { model
-                            | gameState =
+                            | message =
+                                Just discardMessage
+                            , gameState =
                                 { gameState
                                     | board = newBoard
                                     , state = DiscardState
@@ -379,7 +410,9 @@ update msg model =
                                             gameState.players
                                 in
                                 { model
-                                    | gameState =
+                                    | message =
+                                        Just turnStockMessage
+                                    , gameState =
                                         { gameState
                                             | board =
                                                 { board
@@ -455,7 +488,14 @@ view model =
             nextPlayer gameState.player gameState.players
     in
     div []
-        [ Lazy.lazy3 (Board.render ReceiveClick)
+        [ case model.message of
+            Nothing ->
+                text ""
+
+            Just message ->
+                p [ style "color" "red" ]
+                    [ text message ]
+        , Lazy.lazy3 (Board.render ReceiveClick)
             model.windowSize
             model.gameState.player
             model.gameState
