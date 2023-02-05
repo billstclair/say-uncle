@@ -1,0 +1,6 @@
+#!/bin/bash
+
+elm make src/Render.elm --output site/render.html
+cd site
+rsyncit
+
