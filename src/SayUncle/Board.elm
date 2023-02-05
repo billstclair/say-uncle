@@ -251,24 +251,45 @@ render wrapper windowSize player { board, players } =
             ]
 
 
-renderTableau : (BoardClick -> msg) -> Size -> Array (Maybe Card) -> Html msg
-renderTableau wrapper windowSize tableau =
+type alias CardsPerRow =
+    { cardsPerRow : Int
+    , marginx : Int
+    , cardWidth : Int
+    , cardHeight : Int
+    }
+
+
+getCardsPerRow : Size -> CardsPerRow
+getCardsPerRow { width, height } =
     let
         ( cardsPerRow, marginx ) =
-            if windowSize.width * 3 < windowSize.height * 2 then
-                ( 5, windowSize.width // 6 )
+            if width * 4 < height * 4 then
+                ( 5, width // 6 )
 
             else
                 ( 10, 5 )
 
         windowWidth =
-            windowSize.width - 2 * marginx
+            width - 2 * marginx
 
         cardWidth =
-            (toFloat windowWidth / cardsPerRow) - 5 |> floor
+            (toFloat windowWidth / toFloat cardsPerRow) - 5 |> floor
 
         cardHeight =
             toFloat cardWidth * cardHeightOverWidth |> floor
+    in
+    { cardsPerRow = cardsPerRow
+    , marginx = marginx
+    , cardWidth = cardWidth
+    , cardHeight = cardHeight
+    }
+
+
+renderTableau : (BoardClick -> msg) -> Size -> Array (Maybe Card) -> Html msg
+renderTableau wrapper windowSize tableau =
+    let
+        { cardsPerRow, marginx, cardWidth, cardHeight } =
+            getCardsPerRow windowSize
 
         loop : Int -> ( Int, Int ) -> List (Svg msg) -> List (Svg msg)
         loop cnt ( x, y ) res =
@@ -314,7 +335,7 @@ renderTableau wrapper windowSize tableau =
 
         totalHeight =
             (cardHeight
-                * ((toFloat (Array.length tableau) / cardsPerRow)
+                * ((toFloat (Array.length tableau) / toFloat cardsPerRow)
                     |> ceiling
                   )
             )
@@ -442,17 +463,14 @@ renderPlayerHand wrapper windowSize player players hands =
                 fractionShown =
                     0.36
 
-                cardWidth =
-                    windowSize.width // 10
+                { cardWidth, cardHeight } =
+                    getCardsPerRow windowSize
 
                 deltaWidth =
                     toFloat cardWidth * fractionShown |> ceiling
 
                 startX =
                     (windowSize.width - (9 * deltaWidth + cardWidth)) // 2
-
-                cardHeight =
-                    toFloat cardWidth * cardHeightOverWidth |> floor
 
                 loop : Int -> List Card -> List (Svg msg) -> List (Svg msg)
                 loop x cardsTail svgs =
