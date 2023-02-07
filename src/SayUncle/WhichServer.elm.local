@@ -1,4 +1,4 @@
-module Agog.WhichServer exposing (isLocal, serverUrl)
+module SayUncle.WhichServer exposing (isLocal, serverUrl)
 
 
 serverUrl : String

@@ -1,8 +1,8 @@
 ---------------------------------------------------------------------
 --
 -- EncodeDecode.elm
--- Zephyrnot JSON encoders and decoders
--- Copyright (c) 2019-2021 Bill St. Clair <billstclair@gmail.com>
+-- Hey Uncle JSON encoders and decoders
+-- Copyright (c) 2019-2023 Bill St. Clair <billstclair@gmail.com>
 -- Some rights reserved.
 -- Distributed under the MIT License
 -- See LICENSE
@@ -10,7 +10,7 @@
 ----------------------------------------------------------------------
 
 
-module Agog.EncodeDecode exposing
+module SayUncle.EncodeDecode exposing
     ( archivedGameDecoder
     , decodeSavedModel
     , defaultOneMove
@@ -57,40 +57,32 @@ module Agog.EncodeDecode exposing
     , withTimestampDecoder
     )
 
-import Agog.Board as Board exposing (rc)
-import Agog.Types as Types
+import Array exposing (Array)
+import Dict exposing (Dict)
+import ElmChat
+import Json.Decode as JD exposing (Decoder)
+import Json.Decode.Pipeline as DP exposing (custom, hardcoded, optional, required)
+import Json.Encode as JE exposing (Value)
+import SayUncle.Board as Board
+import SayUncle.Types as Types
     exposing
         ( ArchivedGame
         , Board
+        , BoardClick(..)
         , ChatSettings
-        , Choice(..)
-        , ChooseMoveOption(..)
-        , Color(..)
         , GameState
-        , HulkAfterJump(..)
         , InitialBoard
-        , JumpSequence
         , Message(..)
         , MessageForLog(..)
-        , MovesOrJumps(..)
         , NamedGame
-        , OneCorruptibleJump
-        , OneJump
-        , OneMove
-        , OneMoveSequence(..)
-        , OneSlideRecord
         , Page(..)
         , Participant(..)
-        , Piece
-        , PieceType(..)
-        , Player(..)
+        , Player
         , PlayerNames
         , PrivateGameState
         , PublicGame
         , PublicGameAndPlayers
         , PublicType(..)
-        , RequestUndo(..)
-        , RotateBoard(..)
         , RowCol
         , SavedModel
         , Score
@@ -98,20 +90,10 @@ import Agog.Types as Types
         , Settings
         , Socket
         , StyleType(..)
-        , TestMode
-        , TestModeInitialState
-        , UndoState
-        , UndoWhichJumps(..)
         , WinReason(..)
         , Winner(..)
         )
-import Agog.WhichServer as WhichServer
-import Array exposing (Array)
-import Dict exposing (Dict)
-import ElmChat
-import Json.Decode as JD exposing (Decoder)
-import Json.Decode.Pipeline as DP exposing (custom, hardcoded, optional, required)
-import Json.Encode as JE exposing (Value)
+import SayUncle.WhichServer as WhichServer
 import Set exposing (Set)
 import Time exposing (Posix)
 import WebSocketFramework exposing (decodePlist, unknownMessage)
@@ -125,24 +107,6 @@ import WebSocketFramework.Types
         , ServerState
         , Statistics
         )
-
-
-encodeMoves : List String -> Value
-encodeMoves moves =
-    moves
-        |> List.intersperse ","
-        |> String.concat
-        |> JE.string
-
-
-movesDecoder : Decoder (List String)
-movesDecoder =
-    JD.oneOf
-        [ JD.string
-            |> JD.andThen
-                (String.split "," >> List.filter ((/=) "") >> JD.succeed)
-        , JD.list JD.string --backward compatibility
-        ]
 
 
 encodeStyleType : StyleType -> Value
@@ -170,63 +134,6 @@ styleTypeDecoder =
                     _ ->
                         JD.fail "Unknown StyleType name."
             )
-
-
-encodeRotateBoard : RotateBoard -> Value
-encodeRotateBoard rotate =
-    JE.string <|
-        case rotate of
-            RotateWhiteDown ->
-                "RotateWhiteDown"
-
-            RotatePlayerDown ->
-                "RotatePlayerDown"
-
-
-boardRotateDecoder : Decoder RotateBoard
-boardRotateDecoder =
-    JD.string
-        |> JD.andThen
-            (\s ->
-                case s of
-                    "RotateWhiteDown" ->
-                        JD.succeed RotateWhiteDown
-
-                    "RotatePlayerDown" ->
-                        JD.succeed RotatePlayerDown
-
-                    _ ->
-                        JD.fail <| "Unknown RotateBoard value: " ++ s
-            )
-
-
-encodeTestMode : TestMode -> Value
-encodeTestMode { piece, clear } =
-    if not clear then
-        encodePiece piece
-
-    else
-        JE.object
-            [ ( "piece", encodePiece piece )
-            , ( "clear", JE.bool clear )
-            ]
-
-
-testModeDecoder : Decoder TestMode
-testModeDecoder =
-    JD.oneOf
-        [ pieceDecoder
-            |> JD.andThen
-                (\piece ->
-                    JD.succeed
-                        { piece = piece
-                        , clear = False
-                        }
-                )
-        , JD.succeed TestMode
-            |> required "piece" pieceDecoder
-            |> required "clear" JD.bool
-        ]
 
 
 encodeSavedModel : SavedModel -> Value
@@ -325,12 +232,7 @@ pageDecoder =
 
 encodePlayer : Player -> Value
 encodePlayer player =
-    case player of
-        WhitePlayer ->
-            JE.string "White"
-
-        BlackPlayer ->
-            JE.string "Black"
+    JE.string <| String.fromInt player
 
 
 playerDecoder : Decoder Player
@@ -338,14 +240,11 @@ playerDecoder =
     JD.string
         |> JD.andThen
             (\s ->
-                case s of
-                    "White" ->
-                        JD.succeed WhitePlayer
+                case String.toInt s of
+                    Just player ->
+                        JD.succeed player
 
-                    "Black" ->
-                        JD.succeed BlackPlayer
-
-                    _ ->
+                    Nothing ->
                         JD.fail <| "Unknown player: " ++ s
             )
 
@@ -367,136 +266,6 @@ participantDecoder =
             |> required "PlayingParticipant" playerDecoder
         , JD.succeed CrowdParticipant
             |> required "CrowdParticipant" JD.string
-        ]
-
-
-winReasonToString : WinReason -> String
-winReasonToString reason =
-    case reason of
-        WinByCapture ->
-            "C"
-
-        WinBySanctum ->
-            "S"
-
-        WinByImmobilization ->
-            "I"
-
-        WinByResignation ->
-            "R"
-
-
-stringToWinReason : String -> Maybe WinReason
-stringToWinReason string =
-    case string of
-        "C" ->
-            Just WinByCapture
-
-        "S" ->
-            Just WinBySanctum
-
-        "I" ->
-            Just WinByImmobilization
-
-        "R" ->
-            Just WinByResignation
-
-        _ ->
-            Nothing
-
-
-encodeWinReason : WinReason -> Value
-encodeWinReason reason =
-    JE.string <| winReasonToString reason
-
-
-winReasonDecoder : Decoder WinReason
-winReasonDecoder =
-    JD.string
-        |> JD.andThen
-            (\s ->
-                case stringToWinReason s of
-                    Nothing ->
-                        JD.fail <| "Unknown WinReason string: " ++ s
-
-                    Just reason ->
-                        JD.succeed reason
-            )
-
-
-winnerToString : Winner -> String
-winnerToString winner =
-    case winner of
-        NoWinner ->
-            "N"
-
-        WhiteWinner reason ->
-            "W" ++ winReasonToString reason
-
-        BlackWinner reason ->
-            "B" ++ winReasonToString reason
-
-
-stringToWinner : String -> Maybe Winner
-stringToWinner string =
-    if string == "N" then
-        Just NoWinner
-
-    else
-        case String.dropLeft 1 string |> stringToWinReason of
-            Nothing ->
-                Nothing
-
-            Just reason ->
-                case String.left 1 string of
-                    "W" ->
-                        Just <| WhiteWinner reason
-
-                    "B" ->
-                        Just <| BlackWinner reason
-
-                    _ ->
-                        Nothing
-
-
-encodeWinner : Winner -> Value
-encodeWinner winner =
-    winnerToString winner |> JE.string
-
-
-winnerDecoder : Decoder Winner
-winnerDecoder =
-    JD.oneOf
-        [ JD.string
-            |> JD.andThen
-                (\s ->
-                    case stringToWinner s of
-                        Nothing ->
-                            JD.fail <| "Not a winner string: " ++ s
-
-                        Just winner ->
-                            JD.succeed winner
-                )
-        , oldWinnerDecoder
-        ]
-
-
-oldWinnerDecoder : Decoder Winner
-oldWinnerDecoder =
-    JD.oneOf
-        [ JD.string
-            |> JD.andThen
-                (\s ->
-                    if "NoWinner" == s then
-                        JD.succeed NoWinner
-
-                    else
-                        JD.fail <| "Unknown win type: " ++ s
-                )
-        , JD.field "WhiteWinner" winReasonDecoder
-            |> JD.andThen (\reason -> WhiteWinner reason |> JD.succeed)
-        , JD.field "BlackWinner" winReasonDecoder
-            |> JD.andThen (\reason -> BlackWinner reason |> JD.succeed)
         ]
 
 
@@ -533,137 +302,8 @@ stringToBool string =
     string == "0"
 
 
-rowToString : Array Bool -> String
-rowToString row =
-    Array.toList row
-        |> List.map boolToString
-        |> String.concat
-
-
-stringToRow : String -> Array Bool
-stringToRow string =
-    String.toList string
-        |> List.map String.fromChar
-        |> List.map stringToBool
-        |> Array.fromList
-
-
-pieceToPrettyString : Piece -> String
-pieceToPrettyString { pieceType } =
-    case pieceType of
-        Golem ->
-            ""
-
-        Hulk ->
-            "H"
-
-        CorruptedHulk ->
-            "C"
-
-        Journeyman ->
-            "J"
-
-        NoPiece ->
-            "-"
-
-
-pieceToString : Piece -> String
-pieceToString { color, pieceType } =
-    let
-        letter =
-            case pieceType of
-                Golem ->
-                    "G"
-
-                Hulk ->
-                    "H"
-
-                CorruptedHulk ->
-                    "C"
-
-                Journeyman ->
-                    "J"
-
-                NoPiece ->
-                    "-"
-    in
-    case color of
-        WhiteColor ->
-            letter
-
-        BlackColor ->
-            String.toLower letter
-
-
-stringToPiece : String -> Piece
-stringToPiece string =
-    let
-        upper =
-            String.toUpper string
-
-        pieceType =
-            case upper of
-                "G" ->
-                    Golem
-
-                "H" ->
-                    Hulk
-
-                "C" ->
-                    CorruptedHulk
-
-                "J" ->
-                    Journeyman
-
-                _ ->
-                    NoPiece
-
-        color =
-            case pieceType of
-                NoPiece ->
-                    WhiteColor
-
-                _ ->
-                    if upper == string then
-                        WhiteColor
-
-                    else
-                        BlackColor
-    in
-    { color = color
-    , pieceType = pieceType
-    }
-
-
-encodePiece : Piece -> Value
-encodePiece piece =
-    JE.string <| pieceToString piece
-
-
-pieceDecoder : Decoder Piece
-pieceDecoder =
-    JD.string
-        |> JD.andThen
-            (stringToPiece >> JD.succeed)
-
-
-newRowToString : Array Piece -> String
-newRowToString row =
-    Array.toList row
-        |> List.map pieceToString
-        |> String.concat
-
-
-stringToNewRow : String -> Array Piece
-stringToNewRow string =
-    String.toList string
-        |> List.map String.fromChar
-        |> List.map stringToPiece
-        |> Array.fromList
-
-
-newBoardToString : Board -> String
-newBoardToString board =
+boardToString : Board -> String
+boardToString { tableau, stock, turnedStock, hands } =
     Array.toList board
         |> List.map newRowToString
         |> List.intersperse "|"
