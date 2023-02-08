@@ -598,6 +598,60 @@ cardOrder card1 card2 =
 sortCards : List Card -> List Card
 sortCards cards =
     List.sortWith cardOrder cards
+        |> sortAces
+
+
+sortAces : List Card -> List Card
+sortAces cards =
+    let
+        sortAce ace suit cs =
+            let
+                king =
+                    Card suit King
+            in
+            if List.member ace cs then
+                if List.member king cs then
+                    if
+                        not (List.member (Card suit Two) cs)
+                            || not (List.member (Card suit Three) cs)
+                    then
+                        moveAfter ace king cs
+
+                    else
+                        cs
+
+                else
+                    cs
+
+            else
+                cs
+
+        moveAfter card after cs =
+            let
+                loop tail head =
+                    case tail of
+                        [] ->
+                            List.reverse head
+
+                        c :: rest ->
+                            if c == card then
+                                loop rest head
+
+                            else if c == after then
+                                List.concat
+                                    [ List.reverse <| card :: c :: head
+                                    , rest
+                                    ]
+
+                            else
+                                loop rest <| c :: head
+            in
+            loop cards []
+    in
+    sortAce (Card Spades Ace) Spades cards
+        |> sortAce (Card Hearts Ace) Hearts
+        |> sortAce (Card Diamonds Ace) Diamonds
+        |> sortAce (Card Clubs Ace) Clubs
 
 
 fontSize : Int -> Int
