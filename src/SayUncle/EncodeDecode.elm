@@ -302,45 +302,111 @@ stringToBool string =
     string == "0"
 
 
+stringToCardDict : Dict String Card
+stringToCardDict =
+    (List.map (\card -> ( Cards.viewCard card |> Tuple.second, card )) faces
+        |> (Back :: Deck.getCards Deck.fullDeck)
+    )
+        |> Dict.fromList
+
+
+cardToString : Card -> String
+cardToString card =
+    Cards.viewCard card |> Tuple.second
+
+
+stringToCard : String -> Maybe Card
+stringToCard string =
+    Dict.get String stringToCardDict
+
+
+maybeCardToString : Maybe Card -> String
+maybeCardToString maybeCard =
+    case maybeCard of
+        Nothing ->
+            " "
+
+        Just card ->
+            cardToString card
+
+
+stringToMaybeCards : String -> List (Maybe Card)
+stringToMaybeCards string =
+    String.toList string
+        |> List.map String.fromChar
+        |> List.map stringToCard
+
+
+stringToCards : String -> Maybe (List Card)
+stringToCards string =
+    let
+        maybeCards =
+            stringToMaybeCards string
+    in
+    if List.member Nothing maybeCards then
+        Nothing
+
+    else
+        List.filterMap identity maybeCards
+
+
+cardsToString : List Card -> String
+cardsToString cards =
+    List.map cardToString cards
+        |> List.foldr (::) ""
+
+
+maybeCardsToString : List (Maybe Card) -> String
+maybeCardsToString cards =
+    List.map maybeCardToString cards
+        |> List.foldr (::) ""
+
+
 boardToString : Board -> String
 boardToString { tableau, stock, turnedStock, hands } =
-    Array.toList board
-        |> List.map newRowToString
-        |> List.intersperse "|"
-        |> String.concat
+    String.concat
+        [ maybeCardsToString (Array.toList tableau)
+        , "|"
+        , cardsToString <| Deck.getCards stock
+        , "|"
+        , maybeCardToString turnedStock
+        , "|"
+        , Array.toList hands
+            |> List.map cardToString
+            |> String.interpose "+"
+        ]
 
 
 stringToBoard : String -> Maybe Board
 stringToBoard string =
-    if String.length string /= 8 * 8 + 7 then
-        Nothing
+    case String.split "|" string of
+        [ tableauString, stockString, turnedStockString, handsString ] ->
+            let
+                hands =
+                    String.split "+" handsString
+                        |> String.map stringToCards
+            in
+            if List.member Nothing hands then
+                Nothing
 
-    else
-        let
-            rows =
-                [ String.slice 0 8 string
-                , String.slice 9 17 string
-                , String.slice 18 26 string
-                , String.slice 27 35 string
-                , String.slice 36 44 string
-                , String.slice 45 53 string
-                , String.slice 54 62 string
-                , String.slice 63 71 string
-                ]
-        in
-        rows
-            |> List.map stringToNewRow
-            |> Array.fromList
-            |> Just
+            else
+                { tableau = stringToMaybeCards tableauString
+                , stock = stringToCard stockString
+                , turnedStock = stringToCard turnedStockString
+                , hands = List.filterMap identity hands
+                }
+
+        _ ->
+            Nothing
 
 
 encodeBoard : Board -> Value
 encodeBoard board =
-    JE.string <| newBoardToString board
+    JE.string <| boardToString board
 
 
-newBoardDecoder : Decoder Board
-newBoardDecoder =
+boardDecoder : Decoder Board
+boardDecoder =
     JD.string
         |> JD.andThen
             (\string ->
@@ -351,23 +417,6 @@ newBoardDecoder =
                     Just board ->
                         JD.succeed board
             )
-
-
-encodeScore : Score -> Value
-encodeScore score =
-    JE.object
-        [ ( "games", JE.int score.games )
-        , ( "whiteWins", JE.int score.whiteWins )
-        , ( "blackWins", JE.int score.blackWins )
-        ]
-
-
-scoreDecoder : Decoder Score
-scoreDecoder =
-    JD.succeed Score
-        |> required "games" JD.int
-        |> required "whiteWins" JD.int
-        |> required "blackWins" JD.int
 
 
 encodeSettings : Settings -> Value
@@ -396,18 +445,39 @@ settingsDecoder =
 
 
 encodePlayerNames : PlayerNames -> Value
-encodePlayerNames { white, black } =
-    JE.object
-        [ ( "white", JE.string white )
-        , ( "black", JE.string black )
-        ]
+encodePlayerNames playerNames =
+    JE.dict String.fromInt JE.string playerNames
 
 
 playerNamesDecoder : Decoder PlayerNames
 playerNamesDecoder =
-    JD.succeed PlayerNames
-        |> required "white" JD.string
-        |> required "black" JD.string
+    JD.keyValuePairs
+        |> JD.andThen
+            (\kvs ->
+                let
+                    ivs =
+                        List.map (\( k, v ) -> ( String.toInt k, v ))
+                in
+                if LE.find (\( k, _ ) -> k == Nothing) ivs then
+                    JD.fail "Non-integer player name"
+
+                else
+                    List.filterMap
+                        (\( k, v ) ->
+                            case k of
+                                Nothing ->
+                                    Nothing
+
+                                Just i ->
+                                    Just ( i, v )
+                        )
+                        |> Dict.fromList
+                        |> JD.succeed
+            )
+
+
+
+-- TODO
 
 
 encodePrivateGameState : PrivateGameState -> Value
