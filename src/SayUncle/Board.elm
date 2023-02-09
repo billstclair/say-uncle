@@ -612,8 +612,11 @@ sortAces cards =
             if List.member ace cs then
                 if List.member king cs then
                     if
-                        not (List.member (Card suit Two) cs)
-                            || not (List.member (Card suit Three) cs)
+                        List.member (Card suit Queen) cs
+                            || not
+                                (List.member (Card suit Two) cs
+                                    && List.member (Card suit Three) cs
+                                )
                     then
                         moveAfter ace king cs
 

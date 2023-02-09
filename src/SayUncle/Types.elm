@@ -11,10 +11,10 @@
 
 
 module SayUncle.Types exposing
-    ( ArchivedGame
-    , Board
+    ( Board
     , BoardClick(..)
     , ChatSettings
+    , Choice(..)
     , GameState
     , InitialBoard
     , Message(..)
@@ -281,13 +281,6 @@ type alias GameState =
     }
 
 
-type alias ArchivedGame =
-    { players : PlayerNames
-    , winner : Winner
-    , initialBoard : Maybe InitialBoard
-    }
-
-
 type alias PlayerNames =
     Dict Int String
 
@@ -323,9 +316,6 @@ updateResponseGameState updater message =
 
         PlayRsp ({ gameState } as rec) ->
             PlayRsp { rec | gameState = updater gameState }
-
-        ResignRsp ({ gameState } as rec) ->
-            ResignRsp { rec | gameState = updater gameState }
 
         AnotherGameRsp ({ gameState } as rec) ->
             AnotherGameRsp { rec | gameState = updater gameState }
@@ -402,11 +392,6 @@ type Message
         { gameid : GameId
         , gameState : GameState
         }
-    | ResignRsp
-        { gameid : GameId
-        , gameState : GameState
-        , player : Player
-        }
     | AnotherGameRsp
         { gameid : GameId
         , gameState : GameState
@@ -480,9 +465,6 @@ messageToPlayer message =
         NewRsp { player } ->
             Just player
 
-        ResignRsp { player } ->
-            Just player
-
         AnotherGameRsp { player } ->
             Just player
 
@@ -537,9 +519,6 @@ messageToGameid message =
             Just gameid
 
         PlayRsp { gameid } ->
-            Just gameid
-
-        ResignRsp { gameid } ->
             Just gameid
 
         AnotherGameRsp { gameid } ->
@@ -611,11 +590,6 @@ type MessageForLog
     | PlayRspLog
         { gameid : GameId
         , gameState : String
-        }
-    | ResignRspLog
-        { gameid : GameId
-        , gameState : String
-        , player : Player
         }
     | AnotherGameRspLog
         { gameid : GameId
@@ -749,7 +723,6 @@ type alias NamedGame msg =
     , playerid : PlayerId
     , isLive : Bool
     , yourWins : Int
-    , archives : List ArchivedGame
 
     -- Not persistent
     , interfaceIsProxy : Bool
