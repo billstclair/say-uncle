@@ -1,7 +1,7 @@
 ---------------------------------------------------------------------
 --
 -- EncodeDecode.elm
--- Hey Uncle JSON encoders and decoders
+-- Say Uncle JSON encoders and decoders
 -- Copyright (c) 2019-2023 Bill St. Clair <billstclair@gmail.com>
 -- Some rights reserved.
 -- Distributed under the MIT License
@@ -12,6 +12,8 @@
 
 module SayUncle.EncodeDecode exposing
     ( boardToString
+    , cardToString
+    , cardsToString
     , decodeSavedModel
     , encodeGameState
     , encodeMessageForLog
@@ -31,6 +33,9 @@ module SayUncle.EncodeDecode exposing
     , publicGameAndPlayersDecoder
     , publicGameToFramework
     , stringToBoard
+    , stringToCard
+    , stringToCards
+    , stringToMaybeCards
     , withTimestampDecoder
     )
 
@@ -277,16 +282,78 @@ stringToBool string =
 
 stringToCardDict : Dict String Card
 stringToCardDict =
-    (List.map (\card -> ( Cards.viewCard card |> Tuple.second, card )) <|
-        Back
-            :: Deck.getCards Deck.fullDeck
-    )
+    List.map (\card -> ( cardToString card, card ))
+        (Back :: Deck.getCards Deck.fullDeck)
         |> Dict.fromList
+
+
+suitToString : Suit -> String
+suitToString suit =
+    case suit of
+        Clubs ->
+            "c"
+
+        Diamonds ->
+            "d"
+
+        Hearts ->
+            "h"
+
+        Spades ->
+            "s"
+
+
+faceToString : Face -> String
+faceToString face =
+    case face of
+        Ace ->
+            "1"
+
+        Two ->
+            "2"
+
+        Three ->
+            "3"
+
+        Four ->
+            "4"
+
+        Five ->
+            "5"
+
+        Six ->
+            "6"
+
+        Seven ->
+            "7"
+
+        Eight ->
+            "8"
+
+        Nine ->
+            "9"
+
+        Ten ->
+            "t"
+
+        Jack ->
+            "j"
+
+        Queen ->
+            "q"
+
+        King ->
+            "k"
 
 
 cardToString : Card -> String
 cardToString card =
-    Cards.viewCard card |> Tuple.second
+    case card of
+        Back ->
+            "bb"
+
+        Card suit face ->
+            faceToString face ++ suitToString suit
 
 
 stringToCard : String -> Maybe Card
@@ -325,9 +392,29 @@ maybeCardToString maybeCard =
 
 stringToMaybeCards : String -> List (Maybe Card)
 stringToMaybeCards string =
-    String.toList string
-        |> List.map String.fromChar
-        |> List.map stringToCard
+    let
+        loop : List Char -> List (Maybe Card) -> List (Maybe Card)
+        loop chars res =
+            case chars of
+                [] ->
+                    List.reverse res
+
+                c1 :: c2 :: rest ->
+                    let
+                        s =
+                            String.fromChar c1 ++ String.fromChar c2
+                    in
+                    case stringToCard s of
+                        Nothing ->
+                            loop rest <| Nothing :: res
+
+                        Just card ->
+                            loop rest <| Just card :: res
+
+                _ ->
+                    loop [] <| Nothing :: res
+    in
+    loop (String.toList string) []
 
 
 stringToCards : String -> Maybe (List Card)

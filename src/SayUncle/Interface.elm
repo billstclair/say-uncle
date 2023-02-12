@@ -1,9 +1,9 @@
 --------------------------------------------------------------------
 --
 -- Interface.elm
--- AGOG server interface.
+-- Say Uncle server interface.
 -- Runs on local machine for local play, and server for networked play.
--- Copyright (c) 2019-2021 Bill St. Clair <billstclair@gmail.com>
+-- Copyright (c) 2019-2023 Bill St. Clair <billstclair@gmail.com>
 -- Some rights reserved.
 -- Distributed under the MIT License
 -- See LICENSE
@@ -11,7 +11,7 @@
 ----------------------------------------------------------------------
 
 
-module Agog.Interface exposing
+module SayUncle.Interface exposing
     ( archiveGame
     , bumpStatistic
     , emptyGameState
@@ -26,48 +26,33 @@ module Agog.Interface exposing
     , unarchiveGame
     )
 
-import Agog.Board as Board
-import Agog.EncodeDecode as ED
-import Agog.Types as Types
+import Debug
+import Dict exposing (Dict)
+import List.Extra as LE
+import SayUncle.Board as Board
+import SayUncle.EncodeDecode as ED
+import SayUncle.Types as Types
     exposing
-        ( ArchivedGame
-        , Board
+        ( Board
         , Choice(..)
-        , ChooseMoveOption(..)
-        , Color(..)
         , GameState
-        , HulkAfterJump(..)
         , InitialBoard
-        , JumpSequence
         , Message(..)
-        , MovesOrJumps(..)
-        , OneCorruptibleJump
-        , OneJump
-        , OneMove
-        , OneMoveSequence(..)
         , Participant(..)
-        , Piece
-        , PieceType(..)
-        , Player(..)
+        , Player
         , PlayerNames
         , PublicGame
         , PublicGameAndPlayers
         , PublicType(..)
-        , RequestUndo(..)
         , RowCol
         , Score
         , ServerState
         , StatisticsKeys
-        , UndoState
-        , UndoWhichJumps(..)
         , WinReason(..)
         , Winner(..)
         , statisticsKeys
         )
-import Agog.WhichServer as WhichServer
-import Debug
-import Dict exposing (Dict)
-import List.Extra as LE
+import SayUncle.WhichServer as WhichServer
 import Time exposing (Posix)
 import WebSocketFramework exposing (decodePlist, unknownMessage)
 import WebSocketFramework.EncodeDecode as WSFED
@@ -659,20 +644,11 @@ generalMessageProcessorInternal isProxyServer state message =
         PlayReq { playerid, placement } ->
             let
                 body gameid gameState player =
-                    let
-                        isRequestUndo =
-                            case placement of
-                                ChooseRequestUndo _ ->
-                                    True
-
-                                _ ->
-                                    False
-                    in
                     if
                         not isProxyServer
                             && (gameState.winner == NoWinner)
-                            && (not isRequestUndo && gameState.whoseTurn /= player)
-                            || (isRequestUndo && gameState.whoseTurn == player)
+                            && player
+                            /= gameState.player
                     then
                         errorRes message state "It's not your turn."
 
