@@ -522,6 +522,10 @@ view model =
             , text "Copyright 2023, Bill St. Clair"
             , br
             , a
+                [ href "./" ]
+                [ text "Home" ]
+            , text " "
+            , a
                 [ href "say-uncle.pdf"
                 , target "_blank"
                 ]

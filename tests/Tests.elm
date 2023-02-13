@@ -6,27 +6,21 @@ import Agog.Types as Types
     exposing
         ( Board
         , Choice(..)
-        , ChooseMoveOption(..)
-        , Color(..)
         , GameState
-        , HulkAfterJump(..)
         , Message(..)
-        , MovesOrJumps(..)
-        , OneMoveSequence(..)
         , Participant(..)
-        , PieceType(..)
-        , Player(..)
+        , Player
         , PlayerNames
         , PrivateGameState
         , PublicGame
         , PublicType(..)
-        , RequestUndo(..)
         , RowCol
         , Score
-        , UndoWhichJumps(..)
         , WinReason(..)
         , Winner(..)
         )
+import Cards exposing (Card(..), Face(..), Suit(..))
+import Deck exposing (Deck, ShuffedDeck)
 import Dict
 import Expect exposing (Expectation)
 import Json.Decode as JD exposing (Decoder)
@@ -122,7 +116,7 @@ protocolData : List Message
 protocolData =
     [ NewReq
         { name = "Bill"
-        , player = WhitePlayer
+        , player = 0
         , publicType = NotPublic
         , gamename = "Game 1"
         , restoreState = Nothing
@@ -130,7 +124,7 @@ protocolData =
         }
     , NewReq
         { name = "Joe"
-        , player = BlackPlayer
+        , player = 1
         , publicType = EntirelyPublic
         , gamename = "Game 2"
         , restoreState = Just gameState1
@@ -138,7 +132,7 @@ protocolData =
         }
     , NewReq
         { name = "Joe"
-        , player = WhitePlayer
+        , player = 2
         , publicType = PublicFor "Bill"
         , gamename = "Game 3"
         , restoreState = Just gameState1
@@ -148,7 +142,7 @@ protocolData =
         { gameid = "123"
         , gamename = "Game 3"
         , playerid = "76"
-        , player = BlackPlayer
+        , player = 0
         , name = "Joe"
         , publicType = NotPublic
         , gameState = gameState1
@@ -158,7 +152,7 @@ protocolData =
         { gameid = "123a"
         , gamename = "Game 4"
         , playerid = "76b"
-        , player = WhitePlayer
+        , player = 1
         , name = "Joel"
         , publicType = EntirelyPublic
         , gameState = gameState2
@@ -168,7 +162,7 @@ protocolData =
         { gameid = "123a"
         , gamename = "Game 5"
         , playerid = "76b"
-        , player = WhitePlayer
+        , player = 2
         , name = "Joel"
         , publicType = PublicFor "Bill"
         , gameState = gameState2
@@ -187,14 +181,14 @@ protocolData =
     , JoinRsp
         { gameid = "123"
         , playerid = Just "77"
-        , participant = PlayingParticipant WhitePlayer
+        , participant = PlayingParticipant 2
         , gameState = gameState2
         , wasRestored = False
         }
     , JoinRsp
         { gameid = "123"
         , playerid = Just "77"
-        , participant = PlayingParticipant BlackPlayer
+        , participant = PlayingParticipant 3
         , gameState = gameState2
         , wasRestored = False
         }
@@ -206,8 +200,8 @@ protocolData =
         , wasRestored = True
         }
     , LeaveReq { playerid = "77" }
-    , LeaveRsp { gameid = "123", participant = PlayingParticipant WhitePlayer }
-    , LeaveRsp { gameid = "123", participant = PlayingParticipant BlackPlayer }
+    , LeaveRsp { gameid = "123", participant = PlayingParticipant 0 }
+    , LeaveRsp { gameid = "123", participant = PlayingParticipant 1 }
     , LeaveRsp { gameid = "123", participant = CrowdParticipant "Wilfred" }
     , UpdateReq { playerid = "77" }
     , UpdateRsp
@@ -216,81 +210,27 @@ protocolData =
         }
     , PlayReq
         { playerid = "77"
-        , placement = ChoosePiece <| rc 0 0
+        , placement = ChooseNew
         }
     , PlayReq
         { playerid = "77"
-        , placement = ChoosePiece <| rc 1 2
+        , placement = ChooseTableau (Card Ace Hearts)
         }
     , PlayReq
         { playerid = "78"
-        , placement = ChooseMove (rc 2 3) NoOption
+        , placement = ChooseStack
         }
     , PlayReq
         { playerid = "78"
-        , placement = ChooseMove (rc 3 4) CorruptJumped
+        , placement = SkipStack
         }
     , PlayReq
         { playerid = "78"
-        , placement = ChooseMove (rc 4 5) (MakeHulk <| rc 3 4)
+        , placement = Dicard (Card Jack Spades)
         }
     , PlayReq
         { playerid = "79"
-        , placement = ChooseUndoJump UndoOneJump
-        }
-    , PlayReq
-        { playerid = "79"
-        , placement = ChooseUndoJump UndoAllJumps
-        }
-    , PlayReq
-        { playerid = "79"
-        , placement = ChooseRequestUndo "Please"
-        }
-    , PlayReq
-        { playerid = "80"
-        , placement = ChooseAcceptUndo
-        }
-    , PlayReq
-        { playerid = "80"
-        , placement = ChooseDenyUndo "Nope"
-        }
-    , PlayReq
-        { playerid = "79"
-        , placement = ChooseResign WhitePlayer
-        }
-    , PlayReq
-        { playerid = "79"
-        , placement = ChooseResign BlackPlayer
-        }
-    , PlayReq
-        { playerid = "80"
-        , placement = ChooseNew WhitePlayer
-        }
-    , PlayReq
-        { playerid = "80"
-        , placement = ChooseNew BlackPlayer
-        }
-    , PlayRsp
-        { gameid = "77"
-        , gameState = gameState1
-        }
-    , PlayRsp
-        { gameid = "78"
-        , gameState = gameState2
-        }
-    , PlayRsp
-        { gameid = "78"
-        , gameState = gameState4
-        }
-    , ResignRsp
-        { gameid = "79"
-        , gameState = { gameState3 | winner = WhiteWinner WinByCapture }
-        , player = WhitePlayer
-        }
-    , ResignRsp
-        { gameid = "79"
-        , gameState = { gameState3 | winner = BlackWinner WinBySanctum }
-        , player = BlackPlayer
+        , placement = SayUncle
         }
     , AnotherGameRsp
         { gameid = "80"
@@ -300,11 +240,15 @@ protocolData =
     , AnotherGameRsp
         { gameid = "80"
         , gameState = gameState2
-        , player = BlackPlayer
+        , player = 1
         }
     , GameOverRsp
         { gameid = "80"
-        , gameState = { gameState1 | winner = WhiteWinner WinByImmobilization }
+        , gameState =
+            { gameState1
+                | winner =
+                    SayUncleWinner { saidUncle = 1, won = 1 }
+            }
         }
     , GameOverRsp
         { gameid = "80"

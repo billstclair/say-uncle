@@ -868,6 +868,9 @@ encodeChoice : Choice -> Value
 encodeChoice choice =
     JE.object
         [ case choice of
+            ChooseNew ->
+                ( "ChooseNew", JE.null )
+
             ChooseTableau card ->
                 ( "ChooseTableau", encodeCard card )
 
@@ -888,7 +891,11 @@ encodeChoice choice =
 choiceDecoder : Decoder Choice
 choiceDecoder =
     JD.oneOf
-        [ JD.field "ChooseTableau" cardDecoder
+        [ JD.field "ChooseNew" JD.value
+            |> JD.andThen (\_ -> JD.succeed ChooseNew)
+        , JD.field "ChooseTableau" cardDecoder
+            |> JD.andThen (ChooseTableau >> JD.succeed)
+        , JD.field "ChooseTableau" cardDecoder
             |> JD.andThen (ChooseTableau >> JD.succeed)
         , JD.field "ChooseStock" JD.value
             |> JD.andThen (\_ -> JD.succeed ChooseStock)

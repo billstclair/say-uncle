@@ -647,14 +647,13 @@ generalMessageProcessorInternal isProxyServer state message =
                     if
                         not isProxyServer
                             && (gameState.winner == NoWinner)
-                            && player
-                            /= gameState.player
+                            && (player /= gameState.player)
                     then
                         errorRes message state "It's not your turn."
 
                     else
                         case placement of
-                            ChooseNew newPlayer ->
+                            ChooseNew ->
                                 case gameState.winner of
                                     NoWinner ->
                                         errorRes message state "Game not over"
@@ -728,174 +727,6 @@ generalMessageProcessorInternal isProxyServer state message =
                                                 , player = newPlayer
                                                 }
                                         )
-
-                            ChooseRequestUndo msg ->
-                                if player == gameState.whoseTurn then
-                                    errorRes message state "You may not request to undo the other player's move."
-
-                                else if gameState.moves == [] then
-                                    errorRes message state "There is nothing to undo."
-
-                                else
-                                    let
-                                        gs =
-                                            { gameState
-                                                | requestUndo =
-                                                    RequestUndo msg
-                                            }
-                                    in
-                                    ( ServerInterface.updateGame gameid gs state
-                                    , Just <|
-                                        PlayRsp
-                                            { gameid = gameid
-                                            , gameState = gs
-                                            }
-                                    )
-
-                            ChooseAcceptUndo ->
-                                if player /= gameState.whoseTurn then
-                                    errorRes message state "You may only accept an undo request during your turn."
-
-                                else
-                                    case gameState.requestUndo of
-                                        RequestUndo _ ->
-                                            let
-                                                gs =
-                                                    unarchiveGame
-                                                        { moves = List.drop 1 gameState.moves
-                                                        , players = gameState.players
-                                                        , winner = gameState.winner
-                                                        , initialBoard = gameState.initialBoard
-                                                        }
-                                                        { gameState
-                                                            | requestUndo =
-                                                                NoRequestUndo
-                                                        }
-                                            in
-                                            ( ServerInterface.updateGame gameid gs state
-                                            , Just <|
-                                                PlayRsp
-                                                    { gameid = gameid
-                                                    , gameState = gs
-                                                    }
-                                            )
-
-                                        _ ->
-                                            errorRes message state "There was no undo reqeust."
-
-                            ChooseDenyUndo msg ->
-                                if player /= gameState.whoseTurn then
-                                    errorRes message state "You may only deny an undo request during your turn."
-
-                                else
-                                    case gameState.requestUndo of
-                                        RequestUndo _ ->
-                                            let
-                                                gs =
-                                                    { gameState
-                                                        | requestUndo =
-                                                            DenyUndo msg
-                                                    }
-                                            in
-                                            ( ServerInterface.updateGame gameid gs state
-                                            , Just <|
-                                                PlayRsp
-                                                    { gameid = gameid
-                                                    , gameState = gs
-                                                    }
-                                            )
-
-                                        _ ->
-                                            errorRes message state "There was no undo request."
-
-                            ChooseResign _ ->
-                                case gameState.winner of
-                                    NoWinner ->
-                                        let
-                                            winner =
-                                                case player of
-                                                    WhitePlayer ->
-                                                        BlackWinner WinByResignation
-
-                                                    BlackPlayer ->
-                                                        WhiteWinner WinByResignation
-
-                                            gs =
-                                                { gameState
-                                                    | winner = winner
-                                                    , requestUndo = NoRequestUndo
-                                                }
-                                                    |> populateWinnerInFirstMove time
-
-                                            state2 =
-                                                populateEndOfGameStatistics gs state
-                                        in
-                                        ( ServerInterface.updateGame gameid gs state2
-                                        , Just <|
-                                            ResignRsp
-                                                { gameid = gameid
-                                                , gameState = gs
-                                                , player = player
-                                                }
-                                        )
-
-                                    _ ->
-                                        errorRes message state "Game already over"
-
-                            ChoosePiece rowCol ->
-                                let
-                                    board =
-                                        gameState.newBoard
-
-                                    jumperLocations =
-                                        gameState.jumperLocations
-                                in
-                                if gameState.undoStates /= [] then
-                                    errorRes message state "A jump sequence is in progress."
-
-                                else
-                                    let
-                                        piece =
-                                            Board.get rowCol board
-                                    in
-                                    if piece.pieceType == NoPiece then
-                                        errorRes message state "No piece at chosen location."
-
-                                    else if not <| colorMatchesPlayer piece.color gameState.whoseTurn then
-                                        errorRes message state "Chosen piece not of player's color."
-
-                                    else if
-                                        (jumperLocations /= [])
-                                            && (not <| List.member rowCol jumperLocations)
-                                    then
-                                        errorRes message state "You must select a piece with a maximal jump sequence."
-
-                                    else
-                                        let
-                                            gs =
-                                                { gameState
-                                                    | selected =
-                                                        if gameState.selected == Just rowCol then
-                                                            Nothing
-
-                                                        else
-                                                            Just rowCol
-                                                }
-                                                    |> Board.populateLegalMoves
-                                        in
-                                        ( ServerInterface.updateGame gameid gs state
-                                        , Just <|
-                                            PlayRsp
-                                                { gameid = gameid
-                                                , gameState = gs
-                                                }
-                                        )
-
-                            ChooseMove rowCol option ->
-                                chooseMove state message gameid gameState player rowCol option
-
-                            ChooseUndoJump undoWhichJumps ->
-                                chooseUndoJump state message gameid gameState undoWhichJumps
 
                 err _ =
                     notForPeonsError message state "PlayReq"
