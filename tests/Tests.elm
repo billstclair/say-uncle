@@ -1,8 +1,17 @@
 module Tests exposing (all)
 
-import Agog.Board as Board
-import Agog.EncodeDecode as ED
-import Agog.Types as Types
+import Cards exposing (Card(..), Face(..), Suit(..))
+import Deck exposing (Deck, ShuffledDeck)
+import Dict
+import Expect exposing (Expectation)
+import Json.Decode as JD exposing (Decoder)
+import Json.Encode as JE exposing (Value)
+import List
+import Maybe exposing (withDefault)
+import Random exposing (Seed)
+import SayUncle.Board as Board
+import SayUncle.EncodeDecode as ED
+import SayUncle.Types as Types
     exposing
         ( Board
         , Choice(..)
@@ -19,14 +28,6 @@ import Agog.Types as Types
         , WinReason(..)
         , Winner(..)
         )
-import Cards exposing (Card(..), Face(..), Suit(..))
-import Deck exposing (Deck, ShuffedDeck)
-import Dict
-import Expect exposing (Expectation)
-import Json.Decode as JD exposing (Decoder)
-import Json.Encode as JE exposing (Value)
-import List
-import Maybe exposing (withDefault)
 import Set exposing (Set)
 import Test exposing (..)
 import Time
@@ -235,7 +236,7 @@ protocolData =
     , AnotherGameRsp
         { gameid = "80"
         , gameState = gameState1
-        , player = WhitePlayer
+        , player = 0
         }
     , AnotherGameRsp
         { gameid = "80"
@@ -269,14 +270,14 @@ protocolData =
     , PublicGamesRsp
         { games =
             [ { publicGame = publicGame1
-              , players = PlayerNames "Bill" "Joe"
+              , players = players1
               , watchers = 3
               , moves = 4
               , startTime = Time.millisToPosix 0
               , endTime = Time.millisToPosix 200
               }
             , { publicGame = publicGame2
-              , players = PlayerNames "Bill" "Joe"
+              , players = players2
               , watchers = 3
               , moves = 4
               , startTime = Time.millisToPosix 0
@@ -287,14 +288,14 @@ protocolData =
     , PublicGamesUpdateRsp
         { added =
             [ { publicGame = publicGame1
-              , players = PlayerNames "Bill" "Joe"
+              , players = players1
               , watchers = 1
               , moves = 2
               , startTime = Time.millisToPosix 0
               , endTime = Time.millisToPosix 100
               }
             , { publicGame = publicGame2
-              , players = PlayerNames "Bob" "Ben"
+              , players = players2
               , watchers = 2
               , moves = 3
               , startTime = Time.millisToPosix 100
@@ -376,32 +377,87 @@ boardTest encodedBoard name =
                             ""
 
                         Just b ->
-                            ED.newBoardToString b
+                            ED.boardToString b
             in
             expectString encodedBoard boardString
         )
 
 
-board1String =
-    "--gggggj|---ggggg|G----ggg|GG---ggg|GGG-G-gg|GGG----g|GGGG----|JGGGGG--"
+tableau1 : Array (Maybe Card)
+tableau1 =
+    Array.fromList [ Nothing, Just <| Card Spades King, Just <| Card Clubs Ace ]
 
 
-board2String =
-    "--gggggj|---ggggg|G---gggg|GG----gg|GGG--ggg|GGG-G--g|GGGGG---|JGGGGG--"
+tableau2 : Array (Maybe Card)
+tableau2 =
+    Deck.fullDeck
+        |> Deck.getCards
+        |> List.map Just
+        |> Array.fromList
 
 
-decodeBoard : String -> Board
-decodeBoard string =
-    ED.stringToBoard string
-        |> Maybe.withDefault Board.empty
+seed : Seed
+seed =
+    Random.initialSeed 0
 
 
+board1 : Board
 board1 =
-    decodeBoard board1String
+    Board.initial 2 seed
+        |> Tuple.first
 
 
+aceOfSpades : Card
+aceOfSpades =
+    Card Spades Ace
+
+
+aosDefault : Maybe Card
+aosDefault =
+    Maybebe.withDefault AceOfSpades
+
+
+board2 : Board
 board2 =
-    decodeBoard board2String
+    let
+        { tableau, stock, hands } =
+            board1
+
+        c1 =
+            aosDefault <| Array.get 0 tableau
+
+        c2 =
+            aosDefault <| Array.get 1 tableau
+
+        ( ts, s2 ) =
+            Deck.draw stock
+
+        h1 =
+            Maybe.withDefault [] <| Array.get 0 hands
+
+        h2 =
+            Maybe.withDefault [] <| Array.get 1 hands
+    in
+    { board1
+        | tableau =
+            Array.set 0 Nothing tableau
+                |> Array.set 1 Nothing
+        , stock = s2
+        , turnedStock = Just ts
+        , hands =
+            Array.set 0 (c1 :: h1) hands
+                |> Array.set 1 (c2 :: h2)
+    }
+
+
+stock1 : ShuffledDeck
+stock1 =
+    Deck.fullDeck
+
+
+stock2 : ShuffledDeck
+stock2 =
+    Random.generate ShuffledDeck
 
 
 boardData : List String
@@ -434,12 +490,14 @@ gameStateTest gameState name =
         )
 
 
+players1 : PlayerNames
 players1 =
-    PlayerNames "Billy Bob" "Bobby Sue"
+    Dict.fromList [ ( 0, "Bill" ), ( 1, "Tom" ) ]
 
 
+players2 : PlayerNames
 players2 =
-    PlayerNames "Joe" "Random"
+    Dict.fromList [ ( 0, "Larry" ), ( 2, "Moe" ), ( 3, "Curly" ) ]
 
 
 score1 =
@@ -450,10 +508,12 @@ score2 =
     Score 4 5 6
 
 
+privateGameState1 : PrivateGameState
 privateGameState1 =
     Types.emptyPrivateGameState
 
 
+privateGameState2 : PrivateGameState
 privateGameState2 =
     { privateGameState1
         | subscribers =
@@ -477,33 +537,9 @@ privateGameState4 =
     }
 
 
-move1 =
-    { piece = { color = WhiteColor, pieceType = Golem }
-    , isUnique = True
-    , sequence = OneSlide { from = rc 0 0, to = rc 2 0, makeHulk = Nothing }
-    , winner = NoWinner
-    , time = Time.millisToPosix 0
-    }
-
-
-move2 =
-    { piece = { color = BlackColor, pieceType = Journeyman }
-    , isUnique = True
-    , sequence =
-        OneJumpSequence
-            [ { from = rc 0 0
-              , over = rc 0 1
-              , to = rc 0 2
-              , hulkAfterJump = NoHulkAfterJump
-              }
-            ]
-    , winner = NoWinner
-    , time = Time.millisToPosix 0
-    }
-
-
+gameState1 : GameState
 gameState1 =
-    { newBoard = board1
+    { board = board1
     , initialBoard = Nothing
     , moves =
         [ { piece = { color = WhiteColor, pieceType = Golem }
@@ -519,7 +555,7 @@ gameState1 =
           }
         ]
     , players = players1
-    , whoseTurn = WhitePlayer
+    , whoseTurn = 0
     , selected = Nothing
     , jumperLocations = []
     , legalMoves = NoMoves
@@ -535,8 +571,8 @@ gameState1 =
 
 
 gameState2 =
-    { newBoard = board1
-    , initialBoard = Just { board = board2, whoseTurn = WhitePlayer }
+    { board = board1
+    , initialBoard = Just { board = board2, whoseTurn = 1 }
     , moves =
         [ { piece = { color = BlackColor, pieceType = Golem }
           , isUnique = False
@@ -558,7 +594,7 @@ gameState2 =
           }
         ]
     , players = players1
-    , whoseTurn = BlackPlayer
+    , whoseTurn = 0
     , selected = Nothing
     , jumperLocations = []
     , legalMoves = NoMoves
@@ -597,7 +633,7 @@ publicGame1 : PublicGame
 publicGame1 =
     { gameid = "foo"
     , creator = "Bill"
-    , player = WhitePlayer
+    , player = 1
     , forName = Nothing
     }
 
@@ -606,6 +642,6 @@ publicGame2 : PublicGame
 publicGame2 =
     { gameid = "bar"
     , creator = "Chris"
-    , player = BlackPlayer
+    , player = 2
     , forName = Just "Bill"
     }
