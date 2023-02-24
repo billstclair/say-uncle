@@ -125,9 +125,7 @@ styleTypeDecoder =
 encodeSavedModel : SavedModel -> Value
 encodeSavedModel model =
     JE.object
-        [ ( "gamename", JE.string model.gamename )
-        , ( "gameGamename", JE.string model.gameGamename )
-        , ( "page", encodePage model.page )
+        [ ( "page", encodePage model.page )
         , ( "chooseFirst", encodePlayer model.chooseFirst )
         , ( "gameid", JE.string model.gameid )
         , ( "settings", encodeSettings model.settings )
@@ -145,8 +143,6 @@ decodeSavedModel value =
 savedModelDecoder : Decoder SavedModel
 savedModelDecoder =
     JD.succeed SavedModel
-        |> optional "gamename" JD.string Types.defaultGamename
-        |> optional "gameGamename" JD.string Types.defaultGamename
         |> optional "page" pageDecoder MainPage
         |> required "chooseFirst" playerDecoder
         |> optional "gameid" JD.string ""
@@ -384,7 +380,7 @@ maybeCardToString : Maybe Card -> String
 maybeCardToString maybeCard =
     case maybeCard of
         Nothing ->
-            " "
+            "  "
 
         Just card ->
             cardToString card
@@ -785,7 +781,7 @@ encodeState state =
     JE.string <|
         case state of
             TableauState ->
-                "Tableau"
+                "TableauState"
 
             TurnStockState ->
                 "TurnStockState"
@@ -1034,12 +1030,10 @@ messageEncoderWithPrivate =
 messageEncoderInternal : Bool -> Message -> ( ReqRsp, Plist )
 messageEncoderInternal includePrivate message =
     case message of
-        NewReq { name, player, publicType, gamename, restoreState, maybeGameid } ->
+        NewReq { name, publicType, restoreState, maybeGameid } ->
             ( Req "new"
             , [ ( "name", JE.string name )
-              , ( "player", encodePlayer player )
               , ( "publicType", encodePublicType publicType )
-              , ( "gamename", JE.string gamename )
               , ( "restoreState"
                 , encodeMaybe (encodeGameState includePrivate) restoreState
                 )
@@ -1047,14 +1041,13 @@ messageEncoderInternal includePrivate message =
               ]
             )
 
-        NewRsp { gameid, playerid, player, name, publicType, gamename, gameState, wasRestored } ->
+        NewRsp { gameid, playerid, player, name, publicType, gameState, wasRestored } ->
             ( Rsp "new"
             , [ ( "gameid", JE.string gameid )
               , ( "playerid", JE.string playerid )
               , ( "player", encodePlayer player )
               , ( "name", JE.string name )
               , ( "publicType", encodePublicType publicType )
-              , ( "gamename", JE.string gamename )
               , ( "gameState", encodeGameState includePrivate gameState )
               , ( "wasRestored", JE.bool wasRestored )
               ]
@@ -1131,11 +1124,10 @@ messageEncoderInternal includePrivate message =
               ]
             )
 
-        AnotherGameRsp { gameid, gameState, player } ->
+        AnotherGameRsp { playerid, gameState } ->
             ( Rsp "anotherGame"
-            , [ ( "gameid", JE.string gameid )
+            , [ ( "playerid", JE.string playerid )
               , ( "gameState", encodeGameState includePrivate gameState )
-              , ( "player", encodePlayer player )
               ]
             )
 
@@ -1217,20 +1209,16 @@ messageEncoderInternal includePrivate message =
 newReqDecoder : Decoder Message
 newReqDecoder =
     JD.succeed
-        (\name player publicType gamename restoreState maybeGameid ->
+        (\name publicType restoreState maybeGameid ->
             NewReq
                 { name = name
-                , player = player
                 , publicType = publicType
-                , gamename = gamename
                 , restoreState = restoreState
                 , maybeGameid = maybeGameid
                 }
         )
         |> required "name" JD.string
-        |> required "player" playerDecoder
         |> required "publicType" publicTypeDecoder
-        |> optional "gamename" JD.string ""
         |> required "restoreState" (JD.nullable gameStateDecoder)
         |> optional "maybeGameid" (JD.nullable JD.string) Nothing
 
@@ -1329,14 +1317,13 @@ chatReqDecoder =
 newRspDecoder : Decoder Message
 newRspDecoder =
     JD.succeed
-        (\gameid playerid player name publicType gamename gameState wasRestored ->
+        (\gameid playerid player name publicType gameState wasRestored ->
             NewRsp
                 { gameid = gameid
                 , playerid = playerid
                 , player = player
                 , name = name
                 , publicType = publicType
-                , gamename = gamename
                 , gameState = gameState
                 , wasRestored = wasRestored
                 }
@@ -1346,7 +1333,6 @@ newRspDecoder =
         |> required "player" playerDecoder
         |> required "name" JD.string
         |> required "publicType" publicTypeDecoder
-        |> optional "gamename" JD.string ""
         |> required "gameState" gameStateDecoder
         |> optional "wasRestored" JD.bool False
 
@@ -1425,16 +1411,14 @@ playRspDecoder =
 anotherGameRspDecoder : Decoder Message
 anotherGameRspDecoder =
     JD.succeed
-        (\gameid gameState player ->
+        (\playerid gameState ->
             AnotherGameRsp
-                { gameid = gameid
+                { playerid = playerid
                 , gameState = gameState
-                , player = player
                 }
         )
-        |> required "gameid" JD.string
+        |> required "playerid" JD.string
         |> required "gameState" gameStateDecoder
-        |> required "player" playerDecoder
 
 
 gameOverRspDecoder : Decoder Message
@@ -1662,12 +1646,10 @@ messageToLogMessage message =
             JE.encode 0 (encodeGameState True gameState)
     in
     case message of
-        NewReq { name, player, publicType, gamename, restoreState, maybeGameid } ->
+        NewReq { name, publicType, restoreState, maybeGameid } ->
             NewReqLog
                 { name = name
-                , player = player
                 , publicType = publicType
-                , gamename = gamename
                 , restoreState =
                     case restoreState of
                         Nothing ->
@@ -1678,14 +1660,13 @@ messageToLogMessage message =
                 , maybeGameid = maybeGameid
                 }
 
-        NewRsp { gameid, playerid, player, name, publicType, gamename, gameState, wasRestored } ->
+        NewRsp { gameid, playerid, player, name, publicType, gameState, wasRestored } ->
             NewRspLog
                 { gameid = gameid
                 , playerid = playerid
                 , player = player
                 , name = name
                 , publicType = publicType
-                , gamename = gamename
                 , gameState = gameStateString gameState
                 , wasRestored = wasRestored
                 }
@@ -1735,11 +1716,10 @@ messageToLogMessage message =
                 , gameState = gameStateString gameState
                 }
 
-        AnotherGameRsp { gameid, gameState, player } ->
+        AnotherGameRsp { playerid, gameState } ->
             AnotherGameRspLog
-                { gameid = gameid
+                { playerid = playerid
                 , gameState = gameStateString gameState
-                , player = player
                 }
 
         GameOverRsp { gameid, gameState } ->

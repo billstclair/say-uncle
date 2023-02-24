@@ -1,5 +1,6 @@
 module Tests exposing (all)
 
+import Array exposing (Array)
 import Cards exposing (Card(..), Face(..), Suit(..))
 import Deck exposing (Deck, ShuffledDeck)
 import Dict
@@ -25,6 +26,7 @@ import SayUncle.Types as Types
         , PublicType(..)
         , RowCol
         , Score
+        , State(..)
         , WinReason(..)
         , Winner(..)
         )
@@ -117,31 +119,24 @@ protocolData : List Message
 protocolData =
     [ NewReq
         { name = "Bill"
-        , player = 0
         , publicType = NotPublic
-        , gamename = "Game 1"
         , restoreState = Nothing
         , maybeGameid = Nothing
         }
     , NewReq
         { name = "Joe"
-        , player = 1
         , publicType = EntirelyPublic
-        , gamename = "Game 2"
         , restoreState = Just gameState1
         , maybeGameid = Just "Joe1"
         }
     , NewReq
         { name = "Joe"
-        , player = 2
         , publicType = PublicFor "Bill"
-        , gamename = "Game 3"
         , restoreState = Just gameState1
         , maybeGameid = Just "Joe2"
         }
     , NewRsp
         { gameid = "123"
-        , gamename = "Game 3"
         , playerid = "76"
         , player = 0
         , name = "Joe"
@@ -151,7 +146,6 @@ protocolData =
         }
     , NewRsp
         { gameid = "123a"
-        , gamename = "Game 4"
         , playerid = "76b"
         , player = 1
         , name = "Joel"
@@ -161,7 +155,6 @@ protocolData =
         }
     , NewRsp
         { gameid = "123a"
-        , gamename = "Game 5"
         , playerid = "76b"
         , player = 2
         , name = "Joel"
@@ -215,33 +208,31 @@ protocolData =
         }
     , PlayReq
         { playerid = "77"
-        , placement = ChooseTableau (Card Ace Hearts)
+        , placement = ChooseTableau (Card Hearts Ace)
         }
     , PlayReq
         { playerid = "78"
-        , placement = ChooseStack
+        , placement = ChooseStock
         }
     , PlayReq
         { playerid = "78"
-        , placement = SkipStack
+        , placement = SkipStock
         }
     , PlayReq
         { playerid = "78"
-        , placement = Dicard (Card Jack Spades)
+        , placement = Discard (Card Spades Jack)
         }
     , PlayReq
         { playerid = "79"
         , placement = SayUncle
         }
     , AnotherGameRsp
-        { gameid = "80"
+        { playerid = "foo"
         , gameState = gameState1
-        , player = 0
         }
     , AnotherGameRsp
-        { gameid = "80"
+        { playerid = "foo"
         , gameState = gameState2
-        , player = 1
         }
     , GameOverRsp
         { gameid = "80"
@@ -253,7 +244,7 @@ protocolData =
         }
     , GameOverRsp
         { gameid = "80"
-        , gameState = { gameState2 | winner = BlackWinner WinByResignation }
+        , gameState = { gameState2 | winner = StockUsedWinner 1 }
         }
     , PublicGamesReq
         { subscribe = False
@@ -272,14 +263,12 @@ protocolData =
             [ { publicGame = publicGame1
               , players = players1
               , watchers = 3
-              , moves = 4
               , startTime = Time.millisToPosix 0
               , endTime = Time.millisToPosix 200
               }
             , { publicGame = publicGame2
               , players = players2
               , watchers = 3
-              , moves = 4
               , startTime = Time.millisToPosix 0
               , endTime = Time.millisToPosix 200
               }
@@ -290,14 +279,12 @@ protocolData =
             [ { publicGame = publicGame1
               , players = players1
               , watchers = 1
-              , moves = 2
               , startTime = Time.millisToPosix 0
               , endTime = Time.millisToPosix 100
               }
             , { publicGame = publicGame2
               , players = players2
               , watchers = 2
-              , moves = 3
               , startTime = Time.millisToPosix 100
               , endTime = Time.millisToPosix 234
               }
@@ -412,9 +399,10 @@ aceOfSpades =
     Card Spades Ace
 
 
-aosDefault : Maybe Card
-aosDefault =
-    Maybebe.withDefault AceOfSpades
+aosDefault : Maybe (Maybe Card) -> Card
+aosDefault maybeMaybeCard =
+    Maybe.withDefault Nothing maybeMaybeCard
+        |> Maybe.withDefault aceOfSpades
 
 
 board2 : Board
@@ -424,10 +412,12 @@ board2 =
             board1
 
         c1 =
-            aosDefault <| Array.get 0 tableau
+            aosDefault <|
+                Array.get 0 tableau
 
         c2 =
-            aosDefault <| Array.get 1 tableau
+            aosDefault <|
+                Array.get 1 tableau
 
         ( ts, s2 ) =
             Deck.draw stock
@@ -457,13 +447,14 @@ stock1 =
 
 stock2 : ShuffledDeck
 stock2 =
-    Random.generate ShuffledDeck
+    Random.step Deck.randomDeck seed
+        |> Tuple.first
 
 
 boardData : List String
 boardData =
-    [ board1String
-    , board2String
+    [ ED.boardToString board1
+    , ED.boardToString board2
     ]
 
 
@@ -501,11 +492,15 @@ players2 =
 
 
 score1 =
-    Score 0 1 2
+    { games = 1
+    , points = Dict.fromList [ ( 0, 2 ) ]
+    }
 
 
 score2 =
-    Score 4 5 6
+    { games = 2
+    , points = Dict.fromList [ ( 0, 2 ), ( 1, 1 ) ]
+    }
 
 
 privateGameState1 : PrivateGameState
@@ -540,85 +535,46 @@ privateGameState4 =
 gameState1 : GameState
 gameState1 =
     { board = board1
-    , initialBoard = Nothing
-    , moves =
-        [ { piece = { color = WhiteColor, pieceType = Golem }
-          , isUnique = True
-          , sequence =
-                OneSlide
-                    { from = rc 0 0
-                    , to = rc 0 1
-                    , makeHulk = Nothing
-                    }
-          , winner = NoWinner
-          , time = Time.millisToPosix 0
-          }
-        ]
     , players = players1
     , whoseTurn = 0
-    , selected = Nothing
-    , jumperLocations = []
-    , legalMoves = NoMoves
-    , undoStates = []
-    , jumps = []
+    , player = 1
+    , state = TableauState
     , score = score1
     , winner = NoWinner
-    , requestUndo = NoRequestUndo
-    , testMode = Nothing
-    , testModeInitialState = Nothing
     , private = privateGameState1
     }
 
 
 gameState2 =
     { board = board1
-    , initialBoard = Just { board = board2, whoseTurn = 1 }
-    , moves =
-        [ { piece = { color = BlackColor, pieceType = Golem }
-          , isUnique = False
-          , sequence =
-                OneJumpSequence
-                    [ { from = rc 0 0
-                      , over = rc 0 1
-                      , to = rc 0 2
-                      , hulkAfterJump = CorruptAfterJump
-                      }
-                    , { from = rc 0 2
-                      , over = rc 1 2
-                      , to = rc 2 2
-                      , hulkAfterJump = NoHulkAfterJump
-                      }
-                    ]
-          , winner = WhiteWinner WinByCapture
-          , time = Time.millisToPosix 100 --must be a multiple of 100
-          }
-        ]
     , players = players1
     , whoseTurn = 0
-    , selected = Nothing
-    , jumperLocations = []
-    , legalMoves = NoMoves
-    , undoStates = []
-    , jumps = []
+    , player = 0
+    , state = TurnStockState
     , score = score1
-    , winner = WhiteWinner WinByCapture
-    , requestUndo = NoRequestUndo
-    , testMode = Nothing
-    , testModeInitialState = Nothing
+    , winner = SayUncleWinner { saidUncle = 0, won = 1 }
     , private = privateGameState2
     }
 
 
 gameState3 =
     { gameState2
-        | selected = Just <| rc 0 0
-        , jumperLocations = [ rc 0 0, rc 1 1 ]
-        , legalMoves = Moves [ rc 2 2, rc 3 3 ]
+        | state = ChooseStockState
+        , winner = StockUsedWinner 0
     }
 
 
 gameState4 =
-    { gameState3 | private = privateGameState4 }
+    { gameState3
+        | state = DiscardState
+        , private = privateGameState4
+    }
+
+
+gameState5 =
+    { gameState3
+        | state = ScoreState
+    }
 
 
 gameStateData : List GameState
@@ -626,6 +582,8 @@ gameStateData =
     [ gameState1
     , gameState2
     , gameState3
+    , gameState4
+    , gameState5
     ]
 
 

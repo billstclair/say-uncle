@@ -201,9 +201,7 @@ emptySettings =
 
 
 type alias SavedModel =
-    { gamename : String
-    , gameGamename : String
-    , page : Page
+    { page : Page
     , chooseFirst : Player
     , gameid : String
     , settings : Settings
@@ -339,9 +337,7 @@ type Choice
 type Message
     = NewReq
         { name : String
-        , player : Player
         , publicType : PublicType
-        , gamename : String
         , restoreState : Maybe GameState
         , maybeGameid : Maybe GameId
         }
@@ -351,7 +347,6 @@ type Message
         , player : Player
         , name : String
         , publicType : PublicType
-        , gamename : String
         , gameState : GameState
         , wasRestored : Bool
         }
@@ -374,7 +369,7 @@ type Message
         }
     | LeaveReq { playerid : PlayerId }
     | LeaveRsp { gameid : GameId, participant : Participant }
-      -- Disallowed if Agog.WhichServer.allowGameState is False
+      -- Disallowed if SayUncle.WhichServer.allowGameState is False
     | SetGameStateReq
         { playerid : PlayerId
         , gameState : GameState
@@ -394,9 +389,8 @@ type Message
         , gameState : GameState
         }
     | AnotherGameRsp
-        { gameid : GameId
+        { playerid : PlayerId
         , gameState : GameState
-        , player : Player
         }
     | GameOverRsp
         { gameid : GameId
@@ -460,13 +454,7 @@ type alias PublicGameAndPlayers =
 messageToPlayer : Message -> Maybe Player
 messageToPlayer message =
     case message of
-        NewReq { player } ->
-            Just player
-
         NewRsp { player } ->
-            Just player
-
-        AnotherGameRsp { player } ->
             Just player
 
         _ ->
@@ -522,9 +510,6 @@ messageToGameid message =
         PlayRsp { gameid } ->
             Just gameid
 
-        AnotherGameRsp { gameid } ->
-            Just gameid
-
         GameOverRsp { gameid } ->
             Just gameid
 
@@ -538,9 +523,7 @@ messageToGameid message =
 type MessageForLog
     = NewReqLog
         { name : String
-        , player : Player
         , publicType : PublicType
-        , gamename : String
         , restoreState : Maybe String
         , maybeGameid : Maybe GameId
         }
@@ -550,7 +533,6 @@ type MessageForLog
         , player : Player
         , name : String
         , publicType : PublicType
-        , gamename : String
         , gameState : String
         , wasRestored : Bool
         }
@@ -593,9 +575,8 @@ type MessageForLog
         , gameState : String
         }
     | AnotherGameRspLog
-        { gameid : GameId
+        { playerid : PlayerId
         , gameState : String
-        , player : Player
         }
     | GameOverRspLog
         { gameid : GameId

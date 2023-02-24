@@ -162,9 +162,7 @@ initial playerCount seed =
             (rawStockSize // playerCount) * playerCount
 
         discards =
-            Debug.log "discards" <|
-                rawStockSize
-                    - stockSize
+            rawStockSize - stockSize
 
         discardLoop : Int -> ShuffledDeck -> ShuffledDeck
         discardLoop cnt deck2 =
