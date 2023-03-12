@@ -3,6 +3,7 @@
 -- Interface.elm
 -- Say Uncle server interface.
 -- Runs on local machine for local play, and server for networked play.
+--
 -- Copyright (c) 2019-2023 Bill St. Clair <billstclair@gmail.com>
 -- Some rights reserved.
 -- Distributed under the MIT License
@@ -12,8 +13,7 @@
 
 
 module SayUncle.Interface exposing
-    ( archiveGame
-    , bumpStatistic
+    ( bumpStatistic
     , emptyGameState
     , ensuringPlayer
     , forNameMatches
@@ -23,7 +23,6 @@ module SayUncle.Interface exposing
     , proxyMessageProcessor
     , publicGameAddPlayers
     , setStatisticsChanged
-    , unarchiveGame
     )
 
 import Debug
@@ -70,21 +69,12 @@ import WebSocketFramework.Types
 
 emptyGameState : PlayerNames -> GameState
 emptyGameState players =
-    { newBoard = Board.initial
-    , initialBoard = Nothing
-    , moves = []
+    { board = Board.initial
     , players = players
-    , whoseTurn = WhitePlayer
-    , selected = Nothing
-    , jumperLocations = []
-    , legalMoves = NoMoves
-    , undoStates = []
-    , jumps = []
+    , whoseTurn = 0
+    , player = 0
     , score = Types.zeroScore
     , winner = NoWinner
-    , requestUndo = NoRequestUndo
-    , testMode = Nothing
-    , testModeInitialState = Nothing
     , private = Types.emptyPrivateGameState
     }
 
@@ -290,7 +280,7 @@ generalMessageProcessorInternal isProxyServer state message =
             state.time
     in
     case message of
-        NewReq { name, player, publicType, gamename, restoreState, maybeGameid } ->
+        NewReq { name, publicType, restoreState, maybeGameid } ->
             let
                 gameidError =
                     case maybeGameid of
@@ -314,16 +304,7 @@ generalMessageProcessorInternal isProxyServer state message =
             else
                 let
                     players =
-                        case player of
-                            WhitePlayer ->
-                                { white = name
-                                , black = ""
-                                }
-
-                            BlackPlayer ->
-                                { white = ""
-                                , black = name
-                                }
+                        Dict.fromList [ ( player, name ) ]
 
                     gameState =
                         case restoreState of
@@ -395,7 +376,6 @@ generalMessageProcessorInternal isProxyServer state message =
                         , player = player
                         , name = name
                         , publicType = publicType
-                        , gamename = gamename
                         , gameState = gameState
                         , wasRestored = maybeGameid /= Nothing
                         }
@@ -409,17 +389,14 @@ generalMessageProcessorInternal isProxyServer state message =
                 Just gameState ->
                     let
                         players =
-                            gameState.players
-
-                        { white, black } =
-                            players
+                            gameState.players |> Dict.toList
                     in
-                    if name == "" || name == white || name == black then
+                    if name == "" || List.any (\( _, n ) -> n == name) players then
                         errorRes message
                             state
                             ("Blank or existing name: \"" ++ name ++ "\"")
 
-                    else if (white /= "" && black /= "") || inCrowd then
+                    else if players == [] || inCrowd then
                         let
                             nameExists ids =
                                 case ids of
@@ -478,12 +455,11 @@ generalMessageProcessorInternal isProxyServer state message =
 
                     else
                         let
-                            ( players2, player ) =
-                                if white == "" then
-                                    ( { players | white = name }, WhitePlayer )
+                            player =
+                                List.length players
 
-                                else
-                                    ( { players | black = name }, BlackPlayer )
+                            players2 =
+                                ( player, name ) :: players
 
                             ( playerid, state2 ) =
                                 ServerInterface.newPlayerid state
@@ -499,7 +475,7 @@ generalMessageProcessorInternal isProxyServer state message =
                                     state2
 
                             gameState2 =
-                                { gameState | players = players2 }
+                                { gameState | players = Dict.fromList players2 }
 
                             state4 =
                                 ServerInterface.updateGame gameid
@@ -547,51 +523,6 @@ generalMessageProcessorInternal isProxyServer state message =
                                 }
                         )
 
-        LeaveReq { playerid } ->
-            let
-                body gameid gameState participant player =
-                    let
-                        players =
-                            gameState.players
-
-                        gameOn =
-                            players.white /= "" && players.black /= ""
-
-                        state2 =
-                            ServerInterface.removeGame gameid state
-                                |> decrementStatistic .activeConnections
-                                |> (if gameOn && gameState.winner == NoWinner then
-                                        decrementStatistic .activeGames
-
-                                    else
-                                        identity
-                                   )
-                    in
-                    ( state2
-                    , Just <|
-                        LeaveRsp
-                            { gameid = gameid
-                            , participant = participant
-                            }
-                    )
-
-                err gameid participant _ =
-                    ( ServerInterface.removePlayer playerid state
-                    , Just <|
-                        LeaveRsp
-                            { gameid = gameid
-                            , participant = participant
-                            }
-                    )
-            in
-            case lookupGame message playerid state of
-                Err res ->
-                    res
-
-                Ok ( gameid, gameState, participant ) ->
-                    ensuringPlayer participant (err gameid participant) <|
-                        body gameid gameState participant
-
         SetGameStateReq { playerid, gameState } ->
             if not isProxyServer && not WhichServer.isLocal then
                 errorRes message state "SetGameStateReq is disabled."
@@ -602,8 +533,6 @@ generalMessageProcessorInternal isProxyServer state message =
                         let
                             gs =
                                 gameState
-                                    |> updateJumperLocations
-                                    |> Board.populateLegalMoves
                                     |> populateWinner time
 
                             state2 =
@@ -1459,101 +1388,3 @@ updateScore gameState =
                     , blackWins = score.blackWins + db
                 }
         }
-
-
-archiveGame : GameState -> ArchivedGame
-archiveGame { moves, players, winner, initialBoard } =
-    ArchivedGame moves players winner initialBoard
-
-
-unarchiveGame : ArchivedGame -> GameState -> GameState
-unarchiveGame { moves, players, winner, initialBoard } gameState =
-    let
-        ( firstTurn, aboard ) =
-            case initialBoard of
-                Nothing ->
-                    ( WhitePlayer, Board.initial )
-
-                Just iBoard ->
-                    ( iBoard.whoseTurn, iBoard.board )
-
-        ( whoseTurn, board ) =
-            replayMoves moves firstTurn aboard
-    in
-    { gameState
-        | newBoard = board
-        , initialBoard = initialBoard
-        , moves = moves
-        , players = players
-        , whoseTurn = whoseTurn
-        , selected = Nothing
-        , jumperLocations = []
-        , legalMoves = NoMoves
-        , undoStates = []
-        , jumps = []
-        , winner = winner
-        , testMode = Nothing
-    }
-        |> updateJumperLocations
-
-
-replayMoves : List OneMove -> Player -> Board -> ( Player, Board )
-replayMoves moves whoseTurn board =
-    -- Should this check that the moves are legal?
-    -- List.foldr walks in reverse order, as intended.
-    List.foldr replayMove ( whoseTurn, board ) moves
-
-
-replayMove : OneMove -> ( Player, Board ) -> ( Player, Board )
-replayMove { piece, sequence } ( whoseTurn, board ) =
-    case sequence of
-        OneResign ->
-            ( whoseTurn, board )
-
-        OneSlide { from, to, makeHulk } ->
-            let
-                board2 =
-                    Board.set from Types.emptyPiece board
-            in
-            ( Types.otherPlayer whoseTurn
-            , case makeHulk of
-                Nothing ->
-                    Board.set to piece board2
-
-                Just hulkPos ->
-                    Board.set to Types.emptyPiece board2
-                        |> Board.set hulkPos
-                            { color = Types.playerColor whoseTurn
-                            , pieceType = Hulk
-                            }
-            )
-
-        OneJumpSequence jumps ->
-            ( Types.otherPlayer whoseTurn
-            , List.foldl (replayOneCorruptibleJump whoseTurn piece) board jumps
-            )
-
-
-replayOneCorruptibleJump : Player -> Piece -> OneCorruptibleJump -> Board -> Board
-replayOneCorruptibleJump whoseTurn piece { from, over, to, hulkAfterJump } board =
-    board
-        |> Board.set from Types.emptyPiece
-        |> Board.set to piece
-        |> (case hulkAfterJump of
-                NoHulkAfterJump ->
-                    Board.set over
-                        Types.emptyPiece
-
-                CorruptAfterJump ->
-                    Board.set over
-                        { color = Types.playerColor whoseTurn
-                        , pieceType = CorruptedHulk
-                        }
-
-                MakeHulkAfterJump hulkPos ->
-                    Board.set to Types.emptyPiece
-                        >> Board.set hulkPos
-                            { color = Types.playerColor whoseTurn
-                            , pieceType = Hulk
-                            }
-           )

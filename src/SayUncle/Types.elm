@@ -367,8 +367,6 @@ type Message
         , gameState : GameState
         , wasRestored : Bool
         }
-    | LeaveReq { playerid : PlayerId }
-    | LeaveRsp { gameid : GameId, participant : Participant }
       -- Disallowed if SayUncle.WhichServer.allowGameState is False
     | SetGameStateReq
         { playerid : PlayerId
@@ -470,9 +468,6 @@ messageToPlayerid message =
         JoinRsp { playerid } ->
             playerid
 
-        LeaveReq { playerid } ->
-            Just playerid
-
         UpdateReq { playerid } ->
             Just playerid
 
@@ -499,9 +494,6 @@ messageToGameid message =
             Just gameid
 
         JoinRsp { gameid } ->
-            Just gameid
-
-        LeaveRsp { gameid } ->
             Just gameid
 
         UpdateRsp { gameid } ->
@@ -553,9 +545,6 @@ type MessageForLog
         , gameState : String
         , wasRestored : Bool
         }
-    | LeaveReqLog { playerid : PlayerId }
-    | LeaveRspLog { gameid : GameId, participant : Participant }
-      -- Disallowed if Agog.WhichServer.allowGameState is False
     | SetGameStateReqLog
         { playerid : PlayerId
         , gameState : String
