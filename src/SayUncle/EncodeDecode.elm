@@ -1079,18 +1079,6 @@ messageEncoderInternal includePrivate message =
               ]
             )
 
-        LeaveReq { playerid } ->
-            ( Req "leave"
-            , [ ( "playerid", JE.string playerid ) ]
-            )
-
-        LeaveRsp { gameid, participant } ->
-            ( Rsp "leave"
-            , [ ( "gameid", JE.string gameid )
-              , ( "participant", encodeParticipant participant )
-              ]
-            )
-
         SetGameStateReq { playerid, gameState } ->
             ( Req "setGameState"
             , [ ( "playerid", JE.string playerid )
@@ -1253,17 +1241,6 @@ rejoinReqDecoder =
         |> required "playerid" JD.string
 
 
-leaveReqDecoder : Decoder Message
-leaveReqDecoder =
-    JD.succeed
-        (\playerid ->
-            LeaveReq
-                { playerid = playerid
-                }
-        )
-        |> required "playerid" JD.string
-
-
 setGameStateReqDecoder : Decoder Message
 setGameStateReqDecoder =
     JD.succeed
@@ -1354,32 +1331,6 @@ joinRspDecoder =
         |> required "participant" participantDecoder
         |> required "gameState" gameStateDecoder
         |> optional "wasRestored" JD.bool False
-
-
-leaveRspDecoder : Decoder Message
-leaveRspDecoder =
-    JD.oneOf
-        [ JD.succeed
-            (\gameid participant ->
-                LeaveRsp
-                    { gameid = gameid
-                    , participant = participant
-                    }
-            )
-            |> required "gameid" JD.string
-            |> required "participant" participantDecoder
-
-        -- Backward compatibility
-        , JD.succeed
-            (\gameid player ->
-                LeaveRsp
-                    { gameid = gameid
-                    , participant = PlayingParticipant player
-                    }
-            )
-            |> required "gameid" JD.string
-            |> required "player" playerDecoder
-        ]
 
 
 updateRspDecoder : Decoder Message
@@ -1537,9 +1488,6 @@ messageDecoder ( reqrsp, plist ) =
                 "rejoin" ->
                     decodePlist rejoinReqDecoder plist
 
-                "leave" ->
-                    decodePlist leaveReqDecoder plist
-
                 "setGameState" ->
                     decodePlist setGameStateReqDecoder plist
 
@@ -1568,9 +1516,6 @@ messageDecoder ( reqrsp, plist ) =
 
                 "join" ->
                     decodePlist joinRspDecoder plist
-
-                "leave" ->
-                    decodePlist leaveRspDecoder plist
 
                 "update" ->
                     decodePlist updateRspDecoder plist
@@ -1685,12 +1630,6 @@ messageToLogMessage message =
                 , gameState = gameStateString gameState
                 , wasRestored = wasRestored
                 }
-
-        LeaveReq rec ->
-            LeaveReqLog rec
-
-        LeaveRsp rec ->
-            LeaveRspLog rec
 
         SetGameStateReq { playerid, gameState } ->
             SetGameStateReqLog

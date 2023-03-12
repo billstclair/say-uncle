@@ -193,10 +193,6 @@ protocolData =
         , gameState = gameState2
         , wasRestored = True
         }
-    , LeaveReq { playerid = "77" }
-    , LeaveRsp { gameid = "123", participant = PlayingParticipant 0 }
-    , LeaveRsp { gameid = "123", participant = PlayingParticipant 1 }
-    , LeaveRsp { gameid = "123", participant = CrowdParticipant "Wilfred" }
     , UpdateReq { playerid = "77" }
     , UpdateRsp
         { gameid = "123"
