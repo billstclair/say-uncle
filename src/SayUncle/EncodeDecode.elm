@@ -18,7 +18,6 @@ module SayUncle.EncodeDecode exposing
     , encodeGameState
     , encodeMessageForLog
     , encodeNamedGame
-    , encodeParticipant
     , encodePublicGameAndPlayers
     , encodeSavedModel
     , encodeWithTimestamp
@@ -29,7 +28,6 @@ module SayUncle.EncodeDecode exposing
     , messageEncoderWithPrivate
     , messageToLogMessage
     , namedGameDecoder
-    , participantDecoder
     , publicGameAndPlayersDecoder
     , publicGameToFramework
     , stringToBoard
@@ -61,7 +59,6 @@ import SayUncle.Types as Types
         , MessageForLog(..)
         , NamedGame
         , Page(..)
-        , Participant(..)
         , Player
         , PlayerNames
         , PrivateGameState
@@ -221,26 +218,6 @@ playerDecoder =
                     Nothing ->
                         JD.fail <| "Unknown player: " ++ s
             )
-
-
-encodeParticipant : Participant -> Value
-encodeParticipant participant =
-    case participant of
-        PlayingParticipant player ->
-            JE.object [ ( "PlayingParticipant", encodePlayer player ) ]
-
-        CrowdParticipant name ->
-            JE.object [ ( "CrowdParticipant", JE.string name ) ]
-
-
-participantDecoder : Decoder Participant
-participantDecoder =
-    JD.oneOf
-        [ JD.succeed PlayingParticipant
-            |> required "PlayingParticipant" playerDecoder
-        , JD.succeed CrowdParticipant
-            |> required "CrowdParticipant" JD.string
-        ]
 
 
 encodeIntPair : ( Int, Int ) -> Value
@@ -825,7 +802,7 @@ stateDecoder =
 encodeGameState : Bool -> GameState -> Value
 encodeGameState includePrivate gameState =
     let
-        { board, players, whoseTurn, player, state, score, winner } =
+        { board, maxPlayers, players, whoseTurn, player, state, score, winner } =
             gameState
 
         privateValue =
@@ -837,6 +814,7 @@ encodeGameState includePrivate gameState =
     in
     JE.object
         [ ( "board", encodeBoard board )
+        , ( "maxPlayers", JE.int maxPlayers )
         , ( "players", encodePlayerNames players )
         , ( "whoseTurn", encodePlayer whoseTurn )
         , ( "player", encodePlayer player )
@@ -851,6 +829,7 @@ gameStateDecoder : Decoder GameState
 gameStateDecoder =
     JD.succeed GameState
         |> required "board" boardDecoder
+        |> required "maxPlayers" JD.int
         |> required "players" playerNamesDecoder
         |> required "whoseTurn" playerDecoder
         |> required "player" playerDecoder
@@ -938,11 +917,10 @@ publicGameDecoder =
 
 
 encodePublicGameAndPlayers : PublicGameAndPlayers -> Value
-encodePublicGameAndPlayers { publicGame, players, watchers, startTime, endTime } =
+encodePublicGameAndPlayers { publicGame, players, startTime, endTime } =
     JE.object
         [ ( "publicGame", encodePublicGame publicGame )
         , ( "players", encodePlayerNames players )
-        , ( "watchers", JE.int watchers )
         , ( "startTime", JE.int <| Time.posixToMillis startTime )
         , ( "endTime", JE.int <| Time.posixToMillis endTime )
         ]
@@ -953,7 +931,6 @@ publicGameAndPlayersDecoder =
     JD.succeed PublicGameAndPlayers
         |> required "publicGame" publicGameDecoder
         |> required "players" playerNamesDecoder
-        |> required "watchers" JD.int
         |> optional "startTime" (JD.int |> JD.andThen (Time.millisToPosix >> JD.succeed)) Types.posixZero
         |> optional "endTime" (JD.int |> JD.andThen (Time.millisToPosix >> JD.succeed)) Types.posixZero
 
@@ -1053,12 +1030,11 @@ messageEncoderInternal includePrivate message =
               ]
             )
 
-        JoinReq { gameid, name, isRestore, inCrowd } ->
+        JoinReq { gameid, name, isRestore } ->
             ( Req "join"
             , [ ( "gameid", JE.string gameid )
               , ( "name", JE.string name )
               , ( "isRestore", JE.bool isRestore )
-              , ( "inCrowd", JE.bool inCrowd )
               ]
             )
 
@@ -1069,11 +1045,10 @@ messageEncoderInternal includePrivate message =
               ]
             )
 
-        JoinRsp { gameid, playerid, participant, gameState, wasRestored } ->
+        JoinRsp { gameid, playerid, gameState, wasRestored } ->
             ( Rsp "join"
             , [ ( "gameid", JE.string gameid )
               , ( "playerid", encodeMaybe JE.string playerid )
-              , ( "participant", encodeParticipant participant )
               , ( "gameState", encodeGameState includePrivate gameState )
               , ( "wasRestored", JE.bool wasRestored )
               ]
@@ -1214,18 +1189,16 @@ newReqDecoder =
 joinReqDecoder : Decoder Message
 joinReqDecoder =
     JD.succeed
-        (\gameid name isRestore inCrowd ->
+        (\gameid name isRestore ->
             JoinReq
                 { gameid = gameid
                 , name = name
                 , isRestore = isRestore
-                , inCrowd = inCrowd
                 }
         )
         |> required "gameid" JD.string
         |> required "name" JD.string
         |> optional "isRestore" JD.bool False
-        |> optional "inCrowd" JD.bool False
 
 
 rejoinReqDecoder : Decoder Message
@@ -1317,18 +1290,16 @@ newRspDecoder =
 joinRspDecoder : Decoder Message
 joinRspDecoder =
     JD.succeed
-        (\gameid playerid participant gameState wasRestored ->
+        (\gameid playerid gameState wasRestored ->
             JoinRsp
                 { gameid = gameid
                 , playerid = playerid
-                , participant = participant
                 , gameState = gameState
                 , wasRestored = wasRestored
                 }
         )
         |> required "gameid" JD.string
         |> required "playerid" (JD.nullable JD.string)
-        |> required "participant" participantDecoder
         |> required "gameState" gameStateDecoder
         |> optional "wasRestored" JD.bool False
 
@@ -1558,7 +1529,6 @@ encodeNamedGame game =
         , ( "serverUrl", JE.string game.serverUrl )
         , ( "otherPlayerid", JE.string game.otherPlayerid )
         , ( "player", encodePlayer game.player )
-        , ( "watcherName", encodeMaybe JE.string game.watcherName )
         , ( "playerid", JE.string game.playerid )
         , ( "isLive", JE.bool game.isLive )
         , ( "yourWins", JE.int game.yourWins )
@@ -1575,7 +1545,6 @@ namedGameDecoder proxyServer =
         |> required "serverUrl" JD.string
         |> required "otherPlayerid" JD.string
         |> required "player" playerDecoder
-        |> optional "watcherName" (JD.nullable JD.string) Nothing
         |> required "playerid" JD.string
         |> required "isLive" JD.bool
         |> required "yourWins" JD.int
@@ -1622,11 +1591,10 @@ messageToLogMessage message =
         ReJoinReq rec ->
             RejoinReqLog rec
 
-        JoinRsp { gameid, playerid, participant, gameState, wasRestored } ->
+        JoinRsp { gameid, playerid, gameState, wasRestored } ->
             JoinRspLog
                 { gameid = gameid
                 , playerid = playerid
-                , participant = participant
                 , gameState = gameStateString gameState
                 , wasRestored = wasRestored
                 }

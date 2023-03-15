@@ -850,39 +850,17 @@ getCrowdParticipants gameid state =
 populateEndOfGameStatistics : GameState -> Types.ServerState -> Types.ServerState
 populateEndOfGameStatistics gameState state =
     let
-        update player =
+        update _ =
             state
                 |> bumpStatistic .finishedGames
                 |> decrementStatistic .activeGames
-                |> bumpStatistic
-                    (case player of
-                        WhitePlayer ->
-                            .whiteWon
-
-                        BlackPlayer ->
-                            .blackWon
-                    )
-                -- Ensure that there is a row for each on the statistics page.
-                |> changeStatistic
-                    (case player of
-                        WhitePlayer ->
-                            .blackWon
-
-                        BlackPlayer ->
-                            .whiteWon
-                    )
-                    0
-                |> changeStatistic .totalMoves (List.length gameState.moves)
     in
     case gameState.winner of
         NoWinner ->
             state
 
-        WhiteWinner _ ->
-            update WhitePlayer
-
-        BlackWinner _ ->
-            update BlackPlayer
+        _ ->
+            update ()
 
 
 populateWinner : Posix -> GameState -> GameState

@@ -21,7 +21,6 @@ module SayUncle.Types exposing
     , MessageForLog(..)
     , NamedGame
     , Page(..)
-    , Participant(..)
     , Player
     , PlayerNames
     , PrivateGameState
@@ -95,11 +94,6 @@ type alias Board =
 
 type alias Player =
     Int
-
-
-type Participant
-    = PlayingParticipant Player
-    | CrowdParticipant String
 
 
 type WinReason
@@ -269,6 +263,7 @@ type State
 
 type alias GameState =
     { board : Board
+    , maxPlayers : Int
     , players : PlayerNames
     , whoseTurn : Player
     , player : Player
@@ -354,7 +349,6 @@ type Message
         { gameid : GameId
         , name : String
         , isRestore : Bool
-        , inCrowd : Bool
         }
     | ReJoinReq
         { gameid : GameId
@@ -363,7 +357,6 @@ type Message
     | JoinRsp
         { gameid : GameId
         , playerid : Maybe PlayerId
-        , participant : Participant
         , gameState : GameState
         , wasRestored : Bool
         }
@@ -443,7 +436,6 @@ type alias PublicGame =
 type alias PublicGameAndPlayers =
     { publicGame : PublicGame
     , players : PlayerNames
-    , watchers : Int
     , startTime : Posix
     , endTime : Posix
     }
@@ -532,7 +524,6 @@ type MessageForLog
         { gameid : GameId
         , name : String
         , isRestore : Bool
-        , inCrowd : Bool
         }
     | RejoinReqLog
         { gameid : GameId
@@ -541,7 +532,6 @@ type MessageForLog
     | JoinRspLog
         { gameid : GameId
         , playerid : Maybe PlayerId
-        , participant : Participant
         , gameState : String
         , wasRestored : Bool
         }
@@ -608,7 +598,7 @@ type MessageForLog
 
 
 type alias ServerState =
-    WebSocketFramework.Types.ServerState GameState Participant
+    WebSocketFramework.Types.ServerState GameState Player
 
 
 serverIsVerbose : ServerState -> Bool
@@ -634,8 +624,6 @@ gameStateIsVerbose gs =
 type alias StatisticsKeys =
     { finishedGames : String
     , totalMoves : String
-    , whiteWon : String
-    , blackWon : String
     , activeGames : String
     , totalConnections : String
     , totalPublicConnections : String
@@ -647,8 +635,6 @@ statisticsKeys : StatisticsKeys
 statisticsKeys =
     { finishedGames = "Finished Games"
     , totalMoves = "Finished Game Total Moves"
-    , whiteWon = "White Won"
-    , blackWon = "Black Won"
     , activeGames = "Active Games"
     , totalConnections = "Total Sessions"
     , totalPublicConnections = "Total Public Sessions"
@@ -660,8 +646,6 @@ statisticsKeyOrder : List (StatisticsKeys -> String)
 statisticsKeyOrder =
     [ .finishedGames
     , .totalMoves
-    , .whiteWon
-    , .blackWon
     , .activeGames
     , .totalConnections
     , .totalPublicConnections
@@ -670,7 +654,7 @@ statisticsKeyOrder =
 
 
 type alias ServerInterface msg =
-    WebSocketFramework.Types.ServerInterface GameState Participant Message msg
+    WebSocketFramework.Types.ServerInterface GameState Player Message msg
 
 
 type alias ChatSettings msg =
@@ -690,7 +674,6 @@ type alias NamedGame msg =
     , serverUrl : String
     , otherPlayerid : PlayerId
     , player : Player
-    , watcherName : Maybe String
     , playerid : PlayerId
     , isLive : Bool
     , yourWins : Int

@@ -139,6 +139,7 @@ init _ =
     , windowSize = Size 1024 768
     , gameState =
         { board = Board.empty 2 |> Tuple.first
+        , maxPlayers = 4
         , players = Dict.fromList [ ( 0, "Bill" ), ( 1, "Tom" ) ]
         , whoseTurn = 0
         , player = 0

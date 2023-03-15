@@ -18,7 +18,6 @@ import SayUncle.Types as Types
         , Choice(..)
         , GameState
         , Message(..)
-        , Participant(..)
         , Player
         , PlayerNames
         , PrivateGameState
@@ -166,7 +165,6 @@ protocolData =
         { gameid = "123"
         , name = "Irving"
         , isRestore = False
-        , inCrowd = False
         }
     , ReJoinReq
         { gameid = "123"
@@ -175,21 +173,18 @@ protocolData =
     , JoinRsp
         { gameid = "123"
         , playerid = Just "77"
-        , participant = PlayingParticipant 2
         , gameState = gameState2
         , wasRestored = False
         }
     , JoinRsp
         { gameid = "123"
         , playerid = Just "77"
-        , participant = PlayingParticipant 3
         , gameState = gameState2
         , wasRestored = False
         }
     , JoinRsp
         { gameid = "123"
         , playerid = Nothing
-        , participant = CrowdParticipant "Irving"
         , gameState = gameState2
         , wasRestored = True
         }
@@ -258,13 +253,11 @@ protocolData =
         { games =
             [ { publicGame = publicGame1
               , players = players1
-              , watchers = 3
               , startTime = Time.millisToPosix 0
               , endTime = Time.millisToPosix 200
               }
             , { publicGame = publicGame2
               , players = players2
-              , watchers = 3
               , startTime = Time.millisToPosix 0
               , endTime = Time.millisToPosix 200
               }
@@ -274,13 +267,11 @@ protocolData =
         { added =
             [ { publicGame = publicGame1
               , players = players1
-              , watchers = 1
               , startTime = Time.millisToPosix 0
               , endTime = Time.millisToPosix 100
               }
             , { publicGame = publicGame2
               , players = players2
-              , watchers = 2
               , startTime = Time.millisToPosix 100
               , endTime = Time.millisToPosix 234
               }
@@ -531,6 +522,7 @@ privateGameState4 =
 gameState1 : GameState
 gameState1 =
     { board = board1
+    , maxPlayers = 4
     , players = players1
     , whoseTurn = 0
     , player = 1
@@ -543,6 +535,7 @@ gameState1 =
 
 gameState2 =
     { board = board1
+    , maxPlayers = 5
     , players = players1
     , whoseTurn = 0
     , player = 0
