@@ -119,18 +119,24 @@ protocolData =
     [ NewReq
         { name = "Bill"
         , publicType = NotPublic
+        , maxPlayers = 3
+        , winningPoints = 5
         , restoreState = Nothing
         , maybeGameid = Nothing
         }
     , NewReq
         { name = "Joe"
         , publicType = EntirelyPublic
+        , maxPlayers = 6
+        , winningPoints = 10
         , restoreState = Just gameState1
         , maybeGameid = Just "Joe1"
         }
     , NewReq
         { name = "Joe"
         , publicType = PublicFor "Bill"
+        , maxPlayers = 4
+        , winningPoints = 12
         , restoreState = Just gameState1
         , maybeGameid = Just "Joe2"
         }

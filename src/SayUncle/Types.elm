@@ -336,6 +336,8 @@ type Message
     = NewReq
         { name : String
         , publicType : PublicType
+        , maxPlayers : Int
+        , winningPoints : Int
         , restoreState : Maybe GameState
         , maybeGameid : Maybe GameId
         }
