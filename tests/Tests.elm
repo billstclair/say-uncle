@@ -26,7 +26,6 @@ import SayUncle.Types as Types
         , RowCol
         , Score
         , State(..)
-        , WinReason(..)
         , Winner(..)
         )
 import Set exposing (Set)
@@ -572,13 +571,19 @@ gameState4 =
 
 gameState5 =
     { gameState3
-        | state = ScoreState
+        | state = ScoreState [ ( 0, -1 ), ( 1, 2 ) ]
     }
 
 
 gameState6 =
     { gameState3
         | state = InitialState
+    }
+
+
+gameState7 =
+    { gameState3
+        | state = GameOverState 0
     }
 
 
@@ -590,6 +595,7 @@ gameStateData =
     , gameState4
     , gameState5
     , gameState6
+    , gameState7
     ]
 
 

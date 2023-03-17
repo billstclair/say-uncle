@@ -73,7 +73,6 @@ import SayUncle.Types as Types
         , Socket
         , State(..)
         , StyleType(..)
-        , WinReason(..)
         , Winner(..)
         )
 import SayUncle.WhichServer as WhichServer
@@ -755,54 +754,64 @@ pointsDecoder =
 
 encodeState : State -> Value
 encodeState state =
-    JE.string <|
-        case state of
-            InitialState ->
-                "InitialState"
+    case state of
+        InitialState ->
+            JE.string "InitialState"
 
-            TableauState ->
-                "TableauState"
+        TableauState ->
+            JE.string "TableauState"
 
-            TurnStockState ->
-                "TurnStockState"
+        TurnStockState ->
+            JE.string "TurnStockState"
 
-            ChooseStockState ->
-                "ChooseStockState"
+        ChooseStockState ->
+            JE.string "ChooseStockState"
 
-            DiscardState ->
-                "DiscardState"
+        DiscardState ->
+            JE.string "DiscardState"
 
-            ScoreState ->
-                "ScoreState"
+        ScoreState scores ->
+            JE.object
+                [ ( "ScoreState"
+                  , JE.list encodeIntPair scores
+                  )
+                ]
+
+        GameOverState winner ->
+            JE.object
+                [ ( "GameOverState", JE.int winner ) ]
 
 
 stateDecoder : Decoder State
 stateDecoder =
-    JD.string
-        |> JD.andThen
-            (\s ->
-                case s of
-                    "InitialState" ->
-                        JD.succeed InitialState
+    JD.oneOf
+        [ JD.string
+            |> JD.andThen
+                (\s ->
+                    case s of
+                        "InitialState" ->
+                            JD.succeed InitialState
 
-                    "TableauState" ->
-                        JD.succeed TableauState
+                        "TableauState" ->
+                            JD.succeed TableauState
 
-                    "TurnStockState" ->
-                        JD.succeed TurnStockState
+                        "TurnStockState" ->
+                            JD.succeed TurnStockState
 
-                    "ChooseStockState" ->
-                        JD.succeed ChooseStockState
+                        "ChooseStockState" ->
+                            JD.succeed ChooseStockState
 
-                    "DiscardState" ->
-                        JD.succeed DiscardState
+                        "DiscardState" ->
+                            JD.succeed DiscardState
 
-                    "ScoreState" ->
-                        JD.succeed ScoreState
-
-                    _ ->
-                        JD.fail <| "Not a valid state \"" ++ s ++ "\""
-            )
+                        _ ->
+                            JD.fail "Illegal string state"
+                )
+        , JD.field "ScoreState" (JD.list intPairDecoder)
+            |> JD.andThen (\pairs -> JD.succeed <| ScoreState pairs)
+        , JD.field "GameOverState" JD.int
+            |> JD.map GameOverState
+        ]
 
 
 encodeGameState : Bool -> GameState -> Value
@@ -1576,10 +1585,12 @@ messageToLogMessage message =
             JE.encode 0 (encodeGameState True gameState)
     in
     case message of
-        NewReq { name, publicType, restoreState, maybeGameid } ->
+        NewReq { name, publicType, maxPlayers, winningPoints, restoreState, maybeGameid } ->
             NewReqLog
                 { name = name
                 , publicType = publicType
+                , maxPlayers = maxPlayers
+                , winningPoints = winningPoints
                 , restoreState =
                     case restoreState of
                         Nothing ->

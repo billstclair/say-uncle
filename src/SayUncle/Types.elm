@@ -40,7 +40,6 @@ module SayUncle.Types exposing
     , Style
     , StyleType(..)
     , SubscriptionSet
-    , WinReason(..)
     , Winner(..)
     , darkStyle
     , defaultGamename
@@ -94,11 +93,6 @@ type alias Board =
 
 type alias Player =
     Int
-
-
-type WinReason
-    = WinBySayUncle
-    | WinByStockUsed
 
 
 type Winner
@@ -259,7 +253,8 @@ type State
     | TurnStockState
     | ChooseStockState
     | DiscardState
-    | ScoreState
+    | ScoreState (List ( Player, Int ))
+    | GameOverState Player
 
 
 type alias GameState =
@@ -513,6 +508,8 @@ type MessageForLog
     = NewReqLog
         { name : String
         , publicType : PublicType
+        , maxPlayers : Int
+        , winningPoints : Int
         , restoreState : Maybe String
         , maybeGameid : Maybe GameId
         }
