@@ -265,6 +265,7 @@ type State
 type alias GameState =
     { board : Board
     , maxPlayers : Int
+    , winningPoints : Int
     , players : PlayerNames
     , dealer : Player
     , whoseTurn : Player

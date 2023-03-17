@@ -523,6 +523,7 @@ gameState1 : GameState
 gameState1 =
     { board = board1
     , maxPlayers = 4
+    , winningPoints = 10
     , players = players1
     , dealer = 2
     , whoseTurn = 0
@@ -537,6 +538,7 @@ gameState1 =
 gameState2 =
     { board = board1
     , maxPlayers = 5
+    , winningPoints = 20
     , players = players1
     , dealer = 1
     , whoseTurn = 1
