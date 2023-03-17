@@ -524,6 +524,7 @@ gameState1 =
     { board = board1
     , maxPlayers = 4
     , players = players1
+    , dealer = 2
     , whoseTurn = 0
     , player = 1
     , state = TableauState
@@ -537,8 +538,9 @@ gameState2 =
     { board = board1
     , maxPlayers = 5
     , players = players1
-    , whoseTurn = 0
-    , player = 0
+    , dealer = 1
+    , whoseTurn = 1
+    , player = 3
     , state = TurnStockState
     , score = score1
     , winner = SayUncleWinner { saidUncle = 0, won = 1 }
@@ -566,6 +568,12 @@ gameState5 =
     }
 
 
+gameState6 =
+    { gameState3
+        | state = InitialState
+    }
+
+
 gameStateData : List GameState
 gameStateData =
     [ gameState1
@@ -573,6 +581,7 @@ gameStateData =
     , gameState3
     , gameState4
     , gameState5
+    , gameState6
     ]
 
 

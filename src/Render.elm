@@ -141,6 +141,7 @@ init _ =
         { board = Board.empty 2 |> Tuple.first
         , maxPlayers = 4
         , players = Dict.fromList [ ( 0, "Bill" ), ( 1, "Tom" ) ]
+        , dealer = 0
         , whoseTurn = 0
         , player = 0
         , state = TableauState

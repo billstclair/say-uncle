@@ -757,6 +757,9 @@ encodeState : State -> Value
 encodeState state =
     JE.string <|
         case state of
+            InitialState ->
+                "InitialState"
+
             TableauState ->
                 "TableauState"
 
@@ -779,6 +782,9 @@ stateDecoder =
         |> JD.andThen
             (\s ->
                 case s of
+                    "InitialState" ->
+                        JD.succeed InitialState
+
                     "TableauState" ->
                         JD.succeed TableauState
 
@@ -802,7 +808,7 @@ stateDecoder =
 encodeGameState : Bool -> GameState -> Value
 encodeGameState includePrivate gameState =
     let
-        { board, maxPlayers, players, whoseTurn, player, state, score, winner } =
+        { board, maxPlayers, players, dealer, whoseTurn, player, state, score, winner } =
             gameState
 
         privateValue =
@@ -816,6 +822,7 @@ encodeGameState includePrivate gameState =
         [ ( "board", encodeBoard board )
         , ( "maxPlayers", JE.int maxPlayers )
         , ( "players", encodePlayerNames players )
+        , ( "dealer", encodePlayer dealer )
         , ( "whoseTurn", encodePlayer whoseTurn )
         , ( "player", encodePlayer player )
         , ( "state", encodeState state )
@@ -831,6 +838,7 @@ gameStateDecoder =
         |> required "board" boardDecoder
         |> required "maxPlayers" JD.int
         |> required "players" playerNamesDecoder
+        |> required "dealer" playerDecoder
         |> required "whoseTurn" playerDecoder
         |> required "player" playerDecoder
         |> required "state" stateDecoder

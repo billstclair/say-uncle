@@ -254,7 +254,8 @@ type alias InitialBoard =
 
 
 type State
-    = TableauState
+    = InitialState
+    | TableauState
     | TurnStockState
     | ChooseStockState
     | DiscardState
@@ -265,6 +266,7 @@ type alias GameState =
     { board : Board
     , maxPlayers : Int
     , players : PlayerNames
+    , dealer : Player
     , whoseTurn : Player
     , player : Player
     , state : State
