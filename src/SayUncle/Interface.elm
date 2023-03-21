@@ -67,9 +67,11 @@ import WebSocketFramework.Types
         )
 
 
-emptyGameState : PlayerNames -> GameState
-emptyGameState players =
+emptyGameState : PlayerNames -> Int -> Int -> GameState
+emptyGameState players maxPlayers winningPoints =
     { board = Board.initial
+    , maxPlayers = maxPlayers
+    , winningPoints = winningPoints
     , players = players
     , whoseTurn = 0
     , player = 0
@@ -280,7 +282,7 @@ generalMessageProcessorInternal isProxyServer state message =
             state.time
     in
     case message of
-        NewReq { name, publicType, restoreState, maybeGameid } ->
+        NewReq { name, publicType, maxPlayers, winningPoints, restoreState, maybeGameid } ->
             let
                 gameidError =
                     case maybeGameid of
@@ -309,7 +311,7 @@ generalMessageProcessorInternal isProxyServer state message =
                     gameState =
                         case restoreState of
                             Nothing ->
-                                emptyGameState players
+                                emptyGameState players maxPlayers winningPoints
 
                             Just gs ->
                                 { gs
