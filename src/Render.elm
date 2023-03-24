@@ -140,6 +140,7 @@ init _ =
     , gameState =
         { board = Board.empty 2 |> Tuple.first
         , maxPlayers = 4
+        , winningPoints = 10
         , players = Dict.fromList [ ( 0, "Bill" ), ( 1, "Tom" ) ]
         , dealer = 0
         , whoseTurn = 0
