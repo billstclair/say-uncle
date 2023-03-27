@@ -15,9 +15,11 @@ module SayUncle.Board exposing
     , getPlayerName
     , initial
     , isTableauEmpty
+    , longestStraightFlush
     , render
     , renderPlayerHand
     , sortCards
+    , suitOrder
     )
 
 import Array exposing (Array)
@@ -665,3 +667,70 @@ fontStyle fsize =
     "font-size: "
         ++ tos fsize
         ++ ";"
+
+
+isNextDefaultFace : Int -> Int -> Bool
+isNextDefaultFace defaultFace lastDefaultFace =
+    if lastDefaultFace == 0 then
+        False
+
+    else if defaultFace == lastDefaultFace + 1 then
+        True
+
+    else
+        defaultFace == 1 && lastDefaultFace == 13
+
+
+longestStraightFlush : List Card -> ( Int, Suit )
+longestStraightFlush cards =
+    let
+        sortedCards =
+            sortCards cards
+
+        processCard : Card -> ( ( Int, Suit ), ( Int, Suit ), Int ) -> ( ( Int, Suit ), ( Int, Suit ), Int )
+        processCard card ( res, ( runLen, runSuit ), lastDefaultFace ) =
+            let
+                ( resLen, resSuit ) =
+                    res
+            in
+            case card of
+                Back ->
+                    -- Can't happen
+                    ( res, ( 0, runSuit ), 0 )
+
+                Card suit face ->
+                    let
+                        defaultFace =
+                            Cards.defaultFace face
+                    in
+                    if
+                        (suit /= runSuit)
+                            || not (isNextDefaultFace defaultFace lastDefaultFace)
+                    then
+                        let
+                            newRes =
+                                if runLen < resLen then
+                                    res
+
+                                else if runLen > resLen then
+                                    ( runLen, runSuit )
+
+                                else if suitOrder runSuit resSuit == GT then
+                                    ( runLen, runSuit )
+
+                                else
+                                    res
+                        in
+                        ( res, ( 1, suit ), defaultFace )
+
+                    else
+                        ( res, ( runLen + 1, runSuit ), defaultFace )
+
+        ( res2, run2, _ ) =
+            List.foldr processCard ( ( 0, Clubs ), ( 0, Clubs ), 0 ) sortedCards
+    in
+    if Tuple.first run2 > Tuple.first res2 then
+        run2
+
+    else
+        res2

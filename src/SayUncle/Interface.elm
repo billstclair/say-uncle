@@ -37,7 +37,7 @@ import SayUncle.Types as Types
         , GameState
         , InitialBoard
         , Message(..)
-        , Participant(..)
+        , Participant
         , Player
         , PlayerNames
         , PublicGame
@@ -865,471 +865,52 @@ populateEndOfGameStatistics gameState state =
             update ()
 
 
+winningPlayer : Array (List Card) -> Player
+winningPlayer hands =
+    let
+        indexedHands =
+            indexedMap (\idx hand -> ( idx, hand )) <| Array.toList hands
+
+        folder : ( Player, List Card ) -> ( ( Int, Suit ), Player ) -> ( ( Int, Suit ), Player )
+        folder ( player, cards ) ( ( winLen, winSuit ), winPlayer ) =
+            let
+                ( len, suit ) =
+                    Board.longestStraigtFlush cards
+            in
+            if
+                len
+                    > winLen
+                    || ((len == winLen) && suitOrder suit winSuit == GT)
+            then
+                ( ( len, suit ), player )
+
+            else
+                ( ( winLen, winSuit ), winPlayer )
+
+        ( _, resPlayer ) =
+            List.foldr folder ( 0, Clubs ) indexedHands
+    in
+    resPlayer
+
+
 populateWinner : Posix -> GameState -> GameState
 populateWinner time gameState =
     case gameState.winner of
         NoWinner ->
             let
-                winner =
-                    Board.computeWinner gameState.whoseTurn gameState.newBoard
+                board =
+                    gameState.board
             in
-            { gameState | winner = winner }
-                |> populateWinnerInFirstMove time
+            if Deck.length board.stock == 0 && board.turnedStock == Nothing then
+                { gameState
+                    | winner = StockUsedWinner <| winningPlayer board.hands
+                }
+
+            else
+                gameState
 
         _ ->
             gameState
-
-
-populateWinnerInFirstMove : Posix -> GameState -> GameState
-populateWinnerInFirstMove time gameState =
-    let
-        winner =
-            gameState.winner
-
-        ( moves, reason, otherColor ) =
-            case winner of
-                NoWinner ->
-                    ( gameState.moves, WinByCapture, WhiteColor )
-
-                WhiteWinner reas ->
-                    ( gameState.moves, reas, BlackColor )
-
-                BlackWinner reas ->
-                    ( gameState.moves, reas, WhiteColor )
-
-        newMoves =
-            if winner == NoWinner then
-                moves
-
-            else
-                case reason of
-                    WinByResignation ->
-                        { piece =
-                            { color = otherColor
-                            , pieceType = Golem
-                            }
-                        , isUnique = True
-                        , sequence = OneResign
-                        , winner = winner
-                        , time = time
-                        }
-                            :: moves
-
-                    _ ->
-                        case moves of
-                            move :: otherMoves ->
-                                { move | winner = winner } :: otherMoves
-
-                            ms ->
-                                ms
-    in
-    { gameState | moves = newMoves }
-        |> updateScore
-
-
-chooseMove : Types.ServerState -> Message -> String -> GameState -> Player -> RowCol -> ChooseMoveOption -> ( Types.ServerState, Maybe Message )
-chooseMove state message gameid gameState player rowCol option =
-    let
-        time =
-            state.time
-
-        board =
-            gameState.newBoard
-    in
-    case gameState.selected of
-        Nothing ->
-            errorRes message state "No selected piece."
-
-        Just selected ->
-            let
-                legalMoves =
-                    gameState.legalMoves
-
-                piece =
-                    Board.get selected board
-            in
-            case legalMoves of
-                NoMoves ->
-                    errorRes message state "There are no legal moves."
-
-                Moves rowCols ->
-                    if not <| List.member rowCol rowCols then
-                        errorRes message state "Not a legal move."
-
-                    else
-                        let
-                            isUnique =
-                                Board.isUniqueMoveTo selected
-                                    rowCol
-                                    (Just piece)
-                                    False
-                                    board
-
-                            move =
-                                { piece = piece
-                                , isUnique = isUnique
-                                , sequence =
-                                    OneSlide
-                                        { from = selected
-                                        , to = rowCol
-                                        , makeHulk =
-                                            case option of
-                                                MakeHulk hulkPos ->
-                                                    Just hulkPos
-
-                                                _ ->
-                                                    Nothing
-                                        }
-                                , winner = NoWinner
-                                , time = time
-                                }
-
-                            gs =
-                                { gameState
-                                    | moves = move :: gameState.moves
-                                    , requestUndo = NoRequestUndo
-                                }
-                                    |> endOfTurn selected rowCol piece option
-
-                            ( gs2, maybeError ) =
-                                processChooseMoveOption option rowCol True gameState.whoseTurn Nothing gs
-                        in
-                        case maybeError of
-                            Just err ->
-                                errorRes message state err
-
-                            Nothing ->
-                                let
-                                    gs3 =
-                                        gs2
-                                            |> updateJumperLocations
-                                            |> populateWinner time
-
-                                    state2 =
-                                        populateEndOfGameStatistics gs3 state
-                                in
-                                ( ServerInterface.updateGame gameid gs3 state2
-                                , Just <|
-                                    PlayRsp
-                                        { gameid = gameid
-                                        , gameState = gs3
-                                        }
-                                )
-
-                Jumps sequences ->
-                    let
-                        remaining =
-                            List.filter (isFirstJumpTo rowCol) sequences
-
-                        newSequences =
-                            List.map (List.drop 1) remaining
-                    in
-                    case remaining of
-                        [] ->
-                            errorRes message state "Not a legal jump."
-
-                        firstSequence :: _ ->
-                            let
-                                firstOver =
-                                    case List.head firstSequence of
-                                        Nothing ->
-                                            -- Can't happen
-                                            Board.rc -1 -1
-
-                                        Just { over } ->
-                                            over
-
-                                jumpOver =
-                                    Just ( firstOver, Board.get firstOver board )
-
-                                newMove =
-                                    { from = selected
-                                    , over = firstOver
-                                    , to = rowCol
-                                    , hulkAfterJump =
-                                        chooseMoveOptionToHulkAfterJump option
-                                    }
-
-                                moves =
-                                    case gameState.jumps of
-                                        _ :: _ ->
-                                            case gameState.moves of
-                                                [] ->
-                                                    -- Can't happen
-                                                    []
-
-                                                move :: otherMoves ->
-                                                    case move.sequence of
-                                                        OneResign ->
-                                                            -- Can't happen
-                                                            []
-
-                                                        OneSlide _ ->
-                                                            -- Can't happen
-                                                            []
-
-                                                        OneJumpSequence jumps ->
-                                                            let
-                                                                sequence =
-                                                                    OneJumpSequence <|
-                                                                        jumps
-                                                                            ++ [ newMove ]
-                                                            in
-                                                            { move
-                                                                | sequence =
-                                                                    sequence
-                                                            }
-                                                                :: otherMoves
-
-                                        _ ->
-                                            -- First jump
-                                            let
-                                                isUnique =
-                                                    Board.isUniqueMoveTo selected
-                                                        rowCol
-                                                        (Just piece)
-                                                        True
-                                                        board
-                                            in
-                                            { piece = piece
-                                            , isUnique = isUnique
-                                            , sequence =
-                                                OneJumpSequence [ newMove ]
-                                            , winner = NoWinner
-                                            , time = time
-                                            }
-                                                :: gameState.moves
-                            in
-                            case List.head newSequences of
-                                Nothing ->
-                                    -- Can't happen
-                                    errorRes message state "No jump sequences."
-
-                                Just [] ->
-                                    -- End of jumps
-                                    let
-                                        doJump jump board2 =
-                                            case jump.hulkAfterJump of
-                                                CorruptAfterJump ->
-                                                    Board.set jump.over
-                                                        { color = piece.color
-                                                        , pieceType = CorruptedHulk
-                                                        }
-                                                        board2
-
-                                                _ ->
-                                                    -- MakeHulkAfterJump is done
-                                                    -- by processChooseMoveOption
-                                                    Board.set jump.over
-                                                        { color = piece.color
-                                                        , pieceType = NoPiece
-                                                        }
-                                                        board2
-
-                                        jumps =
-                                            case List.head firstSequence of
-                                                Nothing ->
-                                                    -- can't happen
-                                                    gameState.jumps
-
-                                                Just jump ->
-                                                    toCorruptibleJump selected option jump :: gameState.jumps
-
-                                        newBoard =
-                                            List.foldr doJump board jumps
-
-                                        gs =
-                                            { gameState
-                                                | newBoard = newBoard
-                                                , moves = moves
-                                                , requestUndo = NoRequestUndo
-                                            }
-
-                                        gs2 =
-                                            endOfTurn selected rowCol piece option gs
-
-                                        ( gs3, maybeError ) =
-                                            processChooseMoveOption option
-                                                rowCol
-                                                True
-                                                gameState.whoseTurn
-                                                jumpOver
-                                                gs2
-                                    in
-                                    case maybeError of
-                                        Just err ->
-                                            errorRes message state err
-
-                                        Nothing ->
-                                            let
-                                                gs4 =
-                                                    gs3
-                                                        |> updateJumperLocations
-                                                        |> populateWinner time
-
-                                                state2 =
-                                                    populateEndOfGameStatistics gs4 state
-                                            in
-                                            ( ServerInterface.updateGame gameid gs4 state2
-                                            , Just <|
-                                                PlayRsp
-                                                    { gameid = gameid
-                                                    , gameState = gs4
-                                                    }
-                                            )
-
-                                _ ->
-                                    let
-                                        gs =
-                                            { gameState
-                                                | newBoard =
-                                                    Board.set selected Types.emptyPiece board
-                                                        |> Board.set rowCol piece
-                                                , moves = moves
-                                                , requestUndo = NoRequestUndo
-                                                , selected = Just rowCol
-                                                , legalMoves = Jumps newSequences
-                                                , undoStates =
-                                                    { board = board
-                                                    , moves = gameState.moves
-                                                    , legalMoves = legalMoves
-                                                    , selected = gameState.selected
-                                                    }
-                                                        :: gameState.undoStates
-                                                , jumps =
-                                                    (List.take 1 firstSequence
-                                                        |> List.map (toCorruptibleJump rowCol option)
-                                                    )
-                                                        ++ gameState.jumps
-                                            }
-
-                                        ( gs2, maybeError ) =
-                                            processChooseMoveOption option
-                                                rowCol
-                                                False
-                                                gameState.whoseTurn
-                                                jumpOver
-                                                gs
-                                    in
-                                    case maybeError of
-                                        Just err ->
-                                            errorRes message state err
-
-                                        Nothing ->
-                                            ( ServerInterface.updateGame gameid gs2 state
-                                            , Just <|
-                                                PlayRsp
-                                                    { gameid = gameid
-                                                    , gameState = gs2
-                                                    }
-                                            )
-
-
-endOfTurn : RowCol -> RowCol -> Piece -> ChooseMoveOption -> GameState -> GameState
-endOfTurn selected moved piece option gameState =
-    let
-        whoseTurn =
-            Types.otherPlayer gameState.whoseTurn
-
-        isMakeHulk chooseMoveOption =
-            case chooseMoveOption of
-                MakeHulk _ ->
-                    True
-
-                _ ->
-                    False
-
-        setPiece =
-            if
-                (piece.pieceType /= Journeyman)
-                    && (moved == Board.playerSanctum whoseTurn)
-                    && (not <| isMakeHulk option)
-            then
-                Types.emptyPiece
-
-            else
-                piece
-
-        newBoard =
-            Board.clear selected gameState.newBoard
-                |> Board.set moved setPiece
-    in
-    { gameState
-        | newBoard = newBoard
-        , selected = Nothing
-        , legalMoves = NoMoves
-        , whoseTurn = whoseTurn
-        , undoStates = []
-        , jumps = []
-    }
-
-
-chooseUndoJump : Types.ServerState -> Message -> String -> GameState -> UndoWhichJumps -> ( Types.ServerState, Maybe Message )
-chooseUndoJump state message gameid gameState undoWhichJumps =
-    case undoWhichJumps of
-        UndoAllJumps ->
-            let
-                dropCnt =
-                    List.length gameState.undoStates - 1
-
-                gs =
-                    { gameState
-                        | undoStates =
-                            List.drop dropCnt gameState.undoStates
-                        , jumps =
-                            List.drop dropCnt gameState.jumps
-                    }
-            in
-            chooseUndoJump state message gameid gs UndoOneJump
-
-        UndoOneJump ->
-            case gameState.undoStates of
-                [] ->
-                    errorRes message state "There is nothing to undo."
-
-                undoState :: undoStates ->
-                    let
-                        gs =
-                            { gameState
-                                | newBoard = undoState.board
-                                , moves = undoState.moves
-                                , selected = undoState.selected
-                                , legalMoves = undoState.legalMoves
-                                , undoStates = undoStates
-                                , jumps = List.drop 1 gameState.jumps
-                            }
-                    in
-                    ( ServerInterface.updateGame gameid gs state
-                    , Just <|
-                        PlayRsp
-                            { gameid = gameid
-                            , gameState = gs
-                            }
-                    )
-
-
-isFirstJumpTo : RowCol -> JumpSequence -> Bool
-isFirstJumpTo rowCol sequence =
-    case List.head sequence of
-        Nothing ->
-            False
-
-        Just oneJump ->
-            oneJump.to == rowCol
-
-
-colorMatchesPlayer : Color -> Player -> Bool
-colorMatchesPlayer color player =
-    if color == WhiteColor then
-        player == WhitePlayer
-
-    else
-        player == BlackPlayer
-
-
-cellName : ( Int, Int ) -> String
-cellName ( rowidx, colidx ) =
-    Board.colToString colidx ++ Board.rowToString rowidx
 
 
 updateScore : GameState -> GameState
@@ -1341,30 +922,57 @@ updateScore gameState =
         names =
             gameState.players
 
-        ( winnerName, deltas ) =
+        deltas : List ( Player, Int )
+        deltas =
             case gameState.winner of
                 NoWinner ->
-                    ( "", ( 0, 0 ) )
+                    []
 
-                WhiteWinner _ ->
-                    ( names.white, ( 1, 0 ) )
+                SayUncleWinner { saidUncle, won } ->
+                    if won == saidUncle then
+                        [ ( saidUncle, 2 ) ]
 
-                BlackWinner _ ->
-                    ( names.black, ( 0, 1 ) )
+                    else
+                        case Dict.get saidUncle score.points of
+                            Nothing ->
+                                []
+
+                            Just points ->
+                                if points == 0 then
+                                    [ ( won, 2 ) ]
+
+                                else
+                                    [ ( saidUncle, points - 1 )
+                                    , ( won, 1 )
+                                    ]
     in
     if gameState.winner == NoWinner then
         gameState
 
     else
         let
-            ( dw, db ) =
-                deltas
+            folder : ( Player, Int ) -> Score -> Score
+            folder ( player, delta ) score1 =
+                let
+                    points =
+                        case Dict.get player score1.points of
+                            Nothing ->
+                                0
+
+                            Just ppp ->
+                                ppp
+                in
+                { score1
+                    | points =
+                        Dict.insert player (points + delta) score1.points
+                }
+
+            score2 =
+                List.foldl folder score deltas
         in
         { gameState
             | score =
-                { score
-                    | games = score.games + 1
-                    , whiteWins = score.whiteWins + dw
-                    , blackWins = score.blackWins + db
+                { score2
+                    | games = score2.games + 1
                 }
         }

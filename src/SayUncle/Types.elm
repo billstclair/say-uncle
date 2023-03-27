@@ -21,6 +21,7 @@ module SayUncle.Types exposing
     , MessageForLog(..)
     , NamedGame
     , Page(..)
+    , Participant
     , Player
     , PlayerNames
     , PrivateGameState
@@ -40,6 +41,7 @@ module SayUncle.Types exposing
     , Style
     , StyleType(..)
     , SubscriptionSet
+    , WinReason(..)
     , Winner(..)
     , darkStyle
     , defaultGamename
@@ -95,6 +97,11 @@ type alias Player =
     Int
 
 
+type WinReason
+    = WinBySayUncle
+    | WinByStockUsed
+
+
 type Winner
     = NoWinner
     | SayUncleWinner { saidUncle : Player, won : Player }
@@ -108,6 +115,10 @@ type Page
     | PublicPage
     | MovesPage
     | StatisticsPage
+
+
+type alias Participant =
+    Player
 
 
 type alias Score =
