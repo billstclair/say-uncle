@@ -15,7 +15,6 @@
 module SayUncle.Interface exposing
     ( bumpStatistic
     , emptyGameState
-    , ensuringPlayer
     , forNameMatches
     , getStatisticsChanged
     , isFirstJumpTo
@@ -25,7 +24,10 @@ module SayUncle.Interface exposing
     , setStatisticsChanged
     )
 
+import Array exposing (Array)
+import Cards exposing (Card(..), Face(..), Suit(..))
 import Debug
+import Deck exposing (Deck, ShuffledDeck)
 import Dict exposing (Dict)
 import List.Extra as LE
 import SayUncle.Board as Board
@@ -90,11 +92,6 @@ errorRes message state text =
             , text = text
             }
     )
-
-
-notForPeonsError : Message -> Types.ServerState -> String -> ( Types.ServerState, Maybe Message )
-notForPeonsError message state messageName =
-    errorRes message state <| messageName ++ " is not permitted to crowd participants."
 
 
 forNameMatches : String -> Maybe String -> Bool
@@ -265,16 +262,6 @@ logSeed prefix state =
     state
 
 
-ensuringPlayer : Participant -> (String -> res) -> (Player -> res) -> res
-ensuringPlayer participant errorThunk thunk =
-    case participant of
-        PlayingParticipant player ->
-            thunk player
-
-        CrowdParticipant name ->
-            errorThunk name
-
-
 generalMessageProcessorInternal : Bool -> Types.ServerState -> Message -> ( Types.ServerState, Maybe Message )
 generalMessageProcessorInternal isProxyServer state message =
     let
@@ -383,7 +370,7 @@ generalMessageProcessorInternal isProxyServer state message =
                         }
                 )
 
-        JoinReq { gameid, name, isRestore, inCrowd } ->
+        JoinReq { gameid, name, isRestore } ->
             case ServerInterface.getGame gameid state of
                 Nothing ->
                     errorRes message state "Unknown session id. Try again when a player has joined."
@@ -391,14 +378,14 @@ generalMessageProcessorInternal isProxyServer state message =
                 Just gameState ->
                     let
                         players =
-                            gameState.players |> Dict.toList
+                            gameState.players
                     in
-                    if name == "" || List.any (\( _, n ) -> n == name) players then
+                    if name == "" || List.member name <| Dict.values players then
                         errorRes message
                             state
                             ("Blank or existing name: \"" ++ name ++ "\"")
 
-                    else if players == [] || inCrowd then
+                    else if Dict.isEmpty players then
                         let
                             nameExists ids =
                                 case ids of
@@ -411,22 +398,12 @@ generalMessageProcessorInternal isProxyServer state message =
                                                 -- Can't happen
                                                 nameExists tail
 
-                                            Just playerInfo ->
-                                                case playerInfo.player of
-                                                    PlayingParticipant _ ->
-                                                        -- Checked above
-                                                        False
-
-                                                    CrowdParticipant idname ->
-                                                        if idname == name then
-                                                            True
-
-                                                        else
-                                                            nameExists tail
+                                            Just _ ->
+                                                False
                         in
                         if nameExists <| ServerInterface.getGamePlayers gameid state then
                             errorRes message state <|
-                                "Already a participant name: "
+                                "Already a player name: "
                                     ++ name
 
                         else
@@ -547,16 +524,13 @@ generalMessageProcessorInternal isProxyServer state message =
                                 , gameState = gs
                                 }
                         )
-
-                    err _ =
-                        notForPeonsError message state "SetGameStateReq"
                 in
                 case lookupGame message playerid state of
                     Err res ->
                         res
 
                     Ok ( gameid, _, participant ) ->
-                        ensuringPlayer participant err <| body gameid
+                        body gameid participant
 
         UpdateReq { playerid } ->
             case lookupGame message playerid state of
@@ -658,16 +632,13 @@ generalMessageProcessorInternal isProxyServer state message =
                                                 , player = newPlayer
                                                 }
                                         )
-
-                err _ =
-                    notForPeonsError message state "PlayReq"
             in
             case lookupGame message playerid state of
                 Err res ->
                     Debug.log "PlayReq Err" res
 
                 Ok ( gameid, gameState, participant ) ->
-                    ensuringPlayer participant err <| body gameid gameState
+                    body gameid gameState participant
 
         PublicGamesReq { subscribe, forName, gameid } ->
             -- subscribe is processed by the server code only
@@ -869,18 +840,18 @@ winningPlayer : Array (List Card) -> Player
 winningPlayer hands =
     let
         indexedHands =
-            indexedMap (\idx hand -> ( idx, hand )) <| Array.toList hands
+            List.indexedMap (\idx hand -> ( idx, hand )) <| Array.toList hands
 
         folder : ( Player, List Card ) -> ( ( Int, Suit ), Player ) -> ( ( Int, Suit ), Player )
         folder ( player, cards ) ( ( winLen, winSuit ), winPlayer ) =
             let
                 ( len, suit ) =
-                    Board.longestStraigtFlush cards
+                    Board.longestStraightFlush cards
             in
             if
                 len
                     > winLen
-                    || ((len == winLen) && suitOrder suit winSuit == GT)
+                    || ((len == winLen) && Board.suitOrder suit winSuit == GT)
             then
                 ( ( len, suit ), player )
 
