@@ -379,6 +379,9 @@ generalMessageProcessorInternal isProxyServer state message =
                     let
                         players =
                             gameState.players
+
+                        nextPlayer =
+                            Dict.size players
                     in
                     if name == "" || List.member name <| Dict.values players then
                         errorRes message
@@ -412,7 +415,7 @@ generalMessageProcessorInternal isProxyServer state message =
                                     ServerInterface.newPlayerid state
 
                                 participant =
-                                    CrowdParticipant name
+                                    newPlayer
 
                                 state3 =
                                     ServerInterface.addPlayer playerid
@@ -426,7 +429,6 @@ generalMessageProcessorInternal isProxyServer state message =
                                 JoinRsp
                                     { gameid = gameid
                                     , playerid = Just playerid
-                                    , participant = participant
                                     , gameState = gameState
                                     , wasRestored = isRestore
                                     }
@@ -719,24 +721,17 @@ generalMessageProcessorInternal isProxyServer state message =
                                     , text = text
                                     }
                             )
+
+                        players =
+                            Dict.toList gameState.players
                     in
-                    case participant of
-                        CrowdParticipant name ->
-                            body name
+                    case List.find (\( p, _ ) -> p == participant) players of
+                        Nothing ->
+                            errorRes message state <|
+                                "Name not found: "
+                                    ++ name
 
-                        PlayingParticipant player ->
-                            let
-                                players =
-                                    gameState.players
-
-                                name =
-                                    case player of
-                                        WhitePlayer ->
-                                            players.white
-
-                                        BlackPlayer ->
-                                            players.black
-                            in
+                        Just ( _, n ) ->
                             body name
 
         _ ->
@@ -776,9 +771,7 @@ publicGameAddPlayers state publicGame =
     in
     { publicGame = publicGame
     , players = players
-    , watchers =
-        getCrowdParticipants publicGame.gameid state
-            |> List.length
+    , watchers = 0
     , moves = List.length moves
     , startTime = startTime
     , endTime = endTime
