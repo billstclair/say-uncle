@@ -142,7 +142,6 @@ init _ =
         , maxPlayers = 4
         , winningPoints = 10
         , players = Dict.fromList [ ( 0, "Bill" ), ( 1, "Tom" ) ]
-        , dealer = 0
         , whoseTurn = 0
         , player = 0
         , state = TableauState
@@ -409,7 +408,7 @@ update msg model =
                                         List.filter ((/=) card) cards
 
                                     newWhoseTurn =
-                                        nextPlayer whoseTurn
+                                        nextPlayer player
                                             gameState.players
                                 in
                                 { model

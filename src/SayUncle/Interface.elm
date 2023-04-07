@@ -17,7 +17,6 @@ module SayUncle.Interface exposing
     , emptyGameState
     , forNameMatches
     , getStatisticsChanged
-    , isFirstJumpTo
     , messageProcessor
     , proxyMessageProcessor
     , publicGameAddPlayers
@@ -293,7 +292,7 @@ generalMessageProcessorInternal isProxyServer state message =
             else
                 let
                     players =
-                        Dict.fromList [ ( player, name ) ]
+                        Dict.fromList [ ( 0, name ) ]
 
                     gameState =
                         case restoreState of
@@ -317,7 +316,7 @@ generalMessageProcessorInternal isProxyServer state message =
                         ServerInterface.newPlayerid state2
 
                     playerInfo =
-                        { gameid = gameid, player = PlayingParticipant player }
+                        { gameid = gameid, player = 0 }
 
                     state4 =
                         ServerInterface.addGame gameid gameState state3
@@ -344,7 +343,7 @@ generalMessageProcessorInternal isProxyServer state message =
                                 publicGame =
                                     { gameid = gameid
                                     , creator = name
-                                    , player = player
+                                    , player = 0
                                     , forName = forName
                                     }
                                         |> ED.publicGameToFramework
@@ -362,7 +361,7 @@ generalMessageProcessorInternal isProxyServer state message =
                     NewRsp
                         { gameid = gameid
                         , playerid = playerid
-                        , player = player
+                        , player = 0
                         , name = name
                         , publicType = publicType
                         , gameState = gameState
@@ -415,7 +414,7 @@ generalMessageProcessorInternal isProxyServer state message =
                                     ServerInterface.newPlayerid state
 
                                 participant =
-                                    newPlayer
+                                    0
 
                                 state3 =
                                     ServerInterface.addPlayer playerid
@@ -446,7 +445,7 @@ generalMessageProcessorInternal isProxyServer state message =
                                 ServerInterface.newPlayerid state
 
                             participant =
-                                PlayingParticipant player
+                                player
 
                             state3 =
                                 ServerInterface.addPlayer playerid
@@ -567,71 +566,34 @@ generalMessageProcessorInternal isProxyServer state message =
 
                                     _ ->
                                         let
-                                            players =
-                                                if player == newPlayer then
-                                                    gameState.players
+                                            p =
+                                                gameState.player + 1
+
+                                            newPlayer =
+                                                if p == Dict.size gameState.players then
+                                                    0
 
                                                 else
-                                                    let
-                                                        { white, black } =
-                                                            gameState.players
-                                                    in
-                                                    { white = black
-                                                    , black = white
-                                                    }
+                                                    p
 
                                             gs =
-                                                emptyGameState players
-
-                                            gs2 =
-                                                { gs
-                                                    | score = gameState.score
-                                                    , requestUndo = NoRequestUndo
+                                                { gameState
+                                                    | board = Board.initial
+                                                    , whoseTurn = newPlayer
+                                                    , player = newPlayer
+                                                    , winner = NoWinner
+                                                    , private = Types.emptyPrivateGameState
                                                 }
 
                                             state2 =
-                                                if player == newPlayer then
-                                                    state
-
-                                                else
-                                                    let
-                                                        playerids =
-                                                            ServerInterface.getGamePlayers
-                                                                gameid
-                                                                state
-
-                                                        loop : PlayerId -> Types.ServerState -> Types.ServerState
-                                                        loop id st =
-                                                            let
-                                                                pl =
-                                                                    if id == playerid then
-                                                                        newPlayer
-
-                                                                    else
-                                                                        Types.otherPlayer
-                                                                            newPlayer
-
-                                                                participant =
-                                                                    PlayingParticipant pl
-                                                            in
-                                                            ServerInterface.updatePlayer
-                                                                id
-                                                                { gameid = gameid
-                                                                , player = participant
-                                                                }
-                                                                st
-                                                    in
-                                                    List.foldl loop state playerids
-
-                                            state3 =
-                                                bumpStatistic .activeGames state2
+                                                bumpStatistic .activeGames state
                                         in
-                                        ( ServerInterface.updateGame gameid gs2 state3
+                                        ( ServerInterface.updateGame gameid gs state2
                                         , Just <|
                                             AnotherGameRsp
                                                 { gameid = gameid
-                                                , gameState = gs2
-                                                , player = newPlayer
+                                                , gameState = gs
+                                                , playerid = playerid
                                                 }
                                         )
             in
@@ -725,13 +687,13 @@ generalMessageProcessorInternal isProxyServer state message =
                         players =
                             Dict.toList gameState.players
                     in
-                    case List.find (\( p, _ ) -> p == participant) players of
+                    case LE.find (\( p, _ ) -> p == participant) players of
                         Nothing ->
                             errorRes message state <|
-                                "Name not found: "
-                                    ++ name
+                                "Player not found: "
+                                    ++ String.fromInt participant
 
-                        Just ( _, n ) ->
+                        Just ( _, name ) ->
                             body name
 
         _ ->
@@ -778,21 +740,6 @@ publicGameAddPlayers state publicGame =
     }
 
 
-isCrowdParticipant : Participant -> Bool
-isCrowdParticipant participant =
-    case participant of
-        CrowdParticipant _ ->
-            True
-
-        _ ->
-            False
-
-
-isPlayingParticipant : Participant -> Bool
-isPlayingParticipant =
-    isCrowdParticipant >> not
-
-
 getGameParticipants : GameId -> Types.ServerState -> List Participant
 getGameParticipants gameid state =
     ServerInterface.getGamePlayers gameid state
@@ -805,12 +752,6 @@ getGameParticipants gameid state =
                     Just info ->
                         Just info.player
             )
-
-
-getCrowdParticipants : GameId -> Types.ServerState -> List Participant
-getCrowdParticipants gameid state =
-    getGameParticipants gameid state
-        |> List.filter isCrowdParticipant
 
 
 populateEndOfGameStatistics : GameState -> Types.ServerState -> Types.ServerState

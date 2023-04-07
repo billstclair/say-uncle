@@ -817,7 +817,7 @@ stateDecoder =
 encodeGameState : Bool -> GameState -> Value
 encodeGameState includePrivate gameState =
     let
-        { board, maxPlayers, winningPoints, players, dealer, whoseTurn, player, state, score, winner } =
+        { board, maxPlayers, winningPoints, players, whoseTurn, player, state, score, winner } =
             gameState
 
         privateValue =
@@ -832,7 +832,6 @@ encodeGameState includePrivate gameState =
         , ( "maxPlayers", JE.int maxPlayers )
         , ( "winningPoints", JE.int winningPoints )
         , ( "players", encodePlayerNames players )
-        , ( "dealer", encodePlayer dealer )
         , ( "whoseTurn", encodePlayer whoseTurn )
         , ( "player", encodePlayer player )
         , ( "state", encodeState state )
@@ -849,7 +848,6 @@ gameStateDecoder =
         |> required "maxPlayers" JD.int
         |> required "winningPoints" JD.int
         |> required "players" playerNamesDecoder
-        |> required "dealer" playerDecoder
         |> required "whoseTurn" playerDecoder
         |> required "player" playerDecoder
         |> required "state" stateDecoder
@@ -1108,9 +1106,10 @@ messageEncoderInternal includePrivate message =
               ]
             )
 
-        AnotherGameRsp { playerid, gameState } ->
+        AnotherGameRsp { gameid, playerid, gameState } ->
             ( Rsp "anotherGame"
-            , [ ( "playerid", JE.string playerid )
+            , [ ( "gameid", JE.string gameid )
+              , ( "playerid", JE.string playerid )
               , ( "gameState", encodeGameState includePrivate gameState )
               ]
             )
@@ -1358,12 +1357,14 @@ playRspDecoder =
 anotherGameRspDecoder : Decoder Message
 anotherGameRspDecoder =
     JD.succeed
-        (\playerid gameState ->
+        (\gameid playerid gameState ->
             AnotherGameRsp
-                { playerid = playerid
+                { gameid = gameid
+                , playerid = playerid
                 , gameState = gameState
                 }
         )
+        |> required "gameid" JD.string
         |> required "playerid" JD.string
         |> required "gameState" gameStateDecoder
 

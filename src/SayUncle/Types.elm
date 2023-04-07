@@ -273,7 +273,6 @@ type alias GameState =
     , maxPlayers : Int
     , winningPoints : Int
     , players : PlayerNames
-    , dealer : Player
     , whoseTurn : Player
     , player : Player
     , state : State
@@ -391,7 +390,8 @@ type Message
         , gameState : GameState
         }
     | AnotherGameRsp
-        { playerid : PlayerId
+        { gameid : GameId
+        , playerid : PlayerId
         , gameState : GameState
         }
     | GameOverRsp
