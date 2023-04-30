@@ -29,6 +29,7 @@ import Debug
 import Deck exposing (Deck, ShuffledDeck)
 import Dict exposing (Dict)
 import List.Extra as LE
+import Random exposing (Seed)
 import SayUncle.Board as Board
 import SayUncle.EncodeDecode as ED
 import SayUncle.Types as Types
@@ -68,9 +69,9 @@ import WebSocketFramework.Types
         )
 
 
-emptyGameState : PlayerNames -> Int -> Int -> GameState
-emptyGameState players maxPlayers winningPoints =
-    { board = Board.initial
+emptyGameState : PlayerNames -> Int -> Int -> Seed -> GameState
+emptyGameState players maxPlayers winningPoints seed =
+    { board = Board.initial players seed
     , maxPlayers = maxPlayers
     , winningPoints = winningPoints
     , players = players
@@ -268,7 +269,7 @@ generalMessageProcessorInternal isProxyServer state message =
             state.time
     in
     case message of
-        NewReq { name, publicType, maxPlayers, winningPoints, restoreState, maybeGameid } ->
+        NewReq { name, publicType, maxPlayers, winningPoints, seed, restoreState, maybeGameid } ->
             let
                 gameidError =
                     case maybeGameid of
@@ -297,7 +298,7 @@ generalMessageProcessorInternal isProxyServer state message =
                     gameState =
                         case restoreState of
                             Nothing ->
-                                emptyGameState players maxPlayers winningPoints
+                                emptyGameState players maxPlayers winningPoints seed
 
                             Just gs ->
                                 { gs
@@ -382,7 +383,7 @@ generalMessageProcessorInternal isProxyServer state message =
                         nextPlayer =
                             Dict.size players
                     in
-                    if name == "" || List.member name <| Dict.values players then
+                    if name == "" || (List.member name <| Dict.values players) then
                         errorRes message
                             state
                             ("Blank or existing name: \"" ++ name ++ "\"")
@@ -436,7 +437,7 @@ generalMessageProcessorInternal isProxyServer state message =
                     else
                         let
                             player =
-                                List.length players
+                                Dict.size players
 
                             players2 =
                                 ( player, name ) :: players
@@ -497,7 +498,6 @@ generalMessageProcessorInternal isProxyServer state message =
                             JoinRsp
                                 { gameid = gameid
                                 , playerid = Just playerid
-                                , participant = participant
                                 , gameState = gameState2
                                 , wasRestored = isRestore
                                 }
@@ -566,19 +566,26 @@ generalMessageProcessorInternal isProxyServer state message =
 
                                     _ ->
                                         let
+                                            playerCount =
+                                                Dict.size gameState.players
+
                                             p =
                                                 gameState.player + 1
 
                                             newPlayer =
-                                                if p == Dict.size gameState.players then
+                                                if p == playerCount then
                                                     0
 
                                                 else
                                                     p
 
+                                            board =
+                                                Board.initial playerCount
+                                                    gameState.board.seed
+
                                             gs =
                                                 { gameState
-                                                    | board = Board.initial
+                                                    | board = board
                                                     , whoseTurn = newPlayer
                                                     , player = newPlayer
                                                     , winner = NoWinner

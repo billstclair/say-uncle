@@ -112,7 +112,6 @@ type alias Model =
     { message : Maybe String
     , windowSize : Size
     , gameState : GameState
-    , seed : Seed
     , time : Int
     }
 
@@ -132,13 +131,13 @@ initialMessage =
 init : () -> ( Model, Cmd Msg )
 init _ =
     let
-        ( board, seed ) =
+        board =
             Board.empty 2
     in
     { message = Just initialMessage
     , windowSize = Size 1024 768
     , gameState =
-        { board = Board.empty 2 |> Tuple.first
+        { board = Board.empty 2
         , maxPlayers = 4
         , winningPoints = 10
         , players = Dict.fromList [ ( 0, "Bill" ), ( 1, "Tom" ) ]
@@ -149,7 +148,6 @@ init _ =
         , winner = NoWinner
         , private = Types.emptyPrivateGameState
         }
-    , seed = seed
     , time = 0
     }
         |> withCmds
@@ -223,14 +221,13 @@ update msg model =
 
         SuffleTheDeck ->
             let
-                ( board, seed ) =
-                    Board.initial 2 model.seed
+                board =
+                    Board.initial 2 gameState.board.seed
             in
             { model
                 | message = Just initialMessage
                 , gameState =
                     { gameState | board = board }
-                , seed = seed
             }
                 |> withNoCmd
 
@@ -433,7 +430,7 @@ update msg model =
                 time =
                     Time.posixToMillis posix
 
-                ( gameState2, seed2 ) =
+                gameState2 =
                     if model.time == 0 then
                         let
                             seed =
@@ -442,20 +439,17 @@ update msg model =
                             gs =
                                 model.gameState
 
-                            ( board, seed3 ) =
+                            board =
                                 Board.initial 2 seed
                         in
-                        ( { gs | board = board }
-                        , seed3
-                        )
+                        { gs | board = board }
 
                     else
-                        ( gameState, model.seed )
+                        gameState
             in
             { model
                 | time = time
                 , gameState = gameState2
-                , seed = seed2
             }
                 |> withNoCmd
 

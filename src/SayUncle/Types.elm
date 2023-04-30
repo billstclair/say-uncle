@@ -67,6 +67,7 @@ import Cards exposing (Card)
 import Deck exposing (ShuffledDeck)
 import Dict exposing (Dict)
 import ElmChat
+import Random exposing (Seed)
 import Set exposing (Set)
 import Time exposing (Posix)
 import WebSocketFramework.Types
@@ -90,6 +91,7 @@ type alias Board =
     , stock : ShuffledDeck
     , turnedStock : Maybe Card
     , hands : Array (List Card)
+    , seed : Seed
     }
 
 
@@ -343,6 +345,7 @@ type Message
         , publicType : PublicType
         , maxPlayers : Int
         , winningPoints : Int
+        , seed : Seed
         , restoreState : Maybe GameState
         , maybeGameid : Maybe GameId
         }

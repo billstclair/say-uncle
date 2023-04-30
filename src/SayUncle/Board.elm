@@ -18,6 +18,7 @@ module SayUncle.Board exposing
     , longestStraightFlush
     , render
     , renderPlayerHand
+    , shuffle
     , sortCards
     , suitOrder
     )
@@ -98,12 +99,12 @@ mergeDecks deck1 deck2 =
     List.foldl folder deck1 <| Deck.getCards deck2
 
 
-empty : Int -> ( Board, Seed )
+empty : Int -> Board
 empty playerCount =
-    initial playerCount (Random.initialSeed 0)
+    initial playerCount <| Random.initialSeed 0
 
 
-initial : Int -> Seed -> ( Board, Seed )
+initial : Int -> Seed -> Board
 initial playerCount seed =
     let
         deckCount =
@@ -184,13 +185,17 @@ initial playerCount seed =
         tableau =
             Array.fromList <| List.map Just tableauList
     in
-    ( { tableau = tableau
-      , stock = stock
-      , turnedStock = Nothing
-      , hands = hands
-      }
-    , seed2
-    )
+    { tableau = tableau
+    , stock = stock
+    , turnedStock = Nothing
+    , hands = hands
+    , seed = seed2
+    }
+
+
+shuffle : Board -> Board
+shuffle board =
+    initial (Array.length board.hands) board.seed
 
 
 

@@ -46,6 +46,7 @@ import Json.Decode as JD exposing (Decoder)
 import Json.Decode.Pipeline as DP exposing (custom, hardcoded, optional, required)
 import Json.Encode as JE exposing (Value)
 import List.Extra as LE
+import Random exposing (Seed)
 import SayUncle.Board as Board
 import SayUncle.Types as Types
     exposing
@@ -453,10 +454,16 @@ stringToBoard string =
                             , stock = Deck.newDeck stockCards
                             , turnedStock = stringToCard turnedStockString
                             , hands = List.filterMap identity hands |> Array.fromList
+                            , seed = zeroSeed
                             }
 
         _ ->
             Nothing
+
+
+zeroSeed : Seed
+zeroSeed =
+    Random.initialSeed 0
 
 
 encodeBoard : Board -> Value
@@ -1198,6 +1205,7 @@ newReqDecoder =
                 , publicType = publicType
                 , maxPlayers = maxPlayers
                 , winningPoints = winningPoints
+                , seed = zeroSeed
                 , restoreState = restoreState
                 , maybeGameid = maybeGameid
                 }
