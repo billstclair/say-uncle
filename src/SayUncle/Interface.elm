@@ -48,6 +48,7 @@ import SayUncle.Types as Types
         , RowCol
         , Score
         , ServerState
+        , State(..)
         , StatisticsKeys
         , WinReason(..)
         , Winner(..)
@@ -71,12 +72,13 @@ import WebSocketFramework.Types
 
 emptyGameState : PlayerNames -> Int -> Int -> Seed -> GameState
 emptyGameState players maxPlayers winningPoints seed =
-    { board = Board.initial players seed
+    { board = Board.initial (Dict.size players) seed
     , maxPlayers = maxPlayers
     , winningPoints = winningPoints
     , players = players
     , whoseTurn = 0
     , player = 0
+    , state = InitialState
     , score = Types.zeroScore
     , winner = NoWinner
     , private = Types.emptyPrivateGameState
@@ -436,17 +438,17 @@ generalMessageProcessorInternal isProxyServer state message =
 
                     else
                         let
-                            player =
-                                Dict.size players
-
                             players2 =
-                                ( player, name ) :: players
+                                Dict.insert nextPlayer name players
+
+                            playerCount =
+                                Dict.size players2
 
                             ( playerid, state2 ) =
                                 ServerInterface.newPlayerid state
 
                             participant =
-                                player
+                                nextPlayer
 
                             state3 =
                                 ServerInterface.addPlayer playerid
@@ -456,7 +458,7 @@ generalMessageProcessorInternal isProxyServer state message =
                                     state2
 
                             gameState2 =
-                                { gameState | players = Dict.fromList players2 }
+                                { gameState | players = players2 }
 
                             state4 =
                                 ServerInterface.updateGame gameid
@@ -740,8 +742,6 @@ publicGameAddPlayers state publicGame =
     in
     { publicGame = publicGame
     , players = players
-    , watchers = 0
-    , moves = List.length moves
     , startTime = startTime
     , endTime = endTime
     }
