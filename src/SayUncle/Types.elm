@@ -450,8 +450,6 @@ type alias PublicGame =
 type alias PublicGameAndPlayers =
     { publicGame : PublicGame
     , players : PlayerNames
-    , startTime : Posix
-    , endTime : Posix
     }
 
 

@@ -941,12 +941,10 @@ publicGameDecoder =
 
 
 encodePublicGameAndPlayers : PublicGameAndPlayers -> Value
-encodePublicGameAndPlayers { publicGame, players, startTime, endTime } =
+encodePublicGameAndPlayers { publicGame, players } =
     JE.object
         [ ( "publicGame", encodePublicGame publicGame )
         , ( "players", encodePlayerNames players )
-        , ( "startTime", JE.int <| Time.posixToMillis startTime )
-        , ( "endTime", JE.int <| Time.posixToMillis endTime )
         ]
 
 
@@ -955,8 +953,6 @@ publicGameAndPlayersDecoder =
     JD.succeed PublicGameAndPlayers
         |> required "publicGame" publicGameDecoder
         |> required "players" playerNamesDecoder
-        |> optional "startTime" (JD.int |> JD.andThen (Time.millisToPosix >> JD.succeed)) Types.posixZero
-        |> optional "endTime" (JD.int |> JD.andThen (Time.millisToPosix >> JD.succeed)) Types.posixZero
 
 
 publicGameToFramework : PublicGame -> WebSocketFramework.Types.PublicGame

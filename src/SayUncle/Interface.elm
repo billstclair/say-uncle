@@ -712,38 +712,17 @@ generalMessageProcessorInternal isProxyServer state message =
 publicGameAddPlayers : Types.ServerState -> PublicGame -> PublicGameAndPlayers
 publicGameAddPlayers state publicGame =
     let
-        ( moves, players ) =
+        players =
             case ServerInterface.getGame publicGame.gameid state of
                 Nothing ->
-                    ( []
-                    , { white = "White"
-                      , black = ""
-                      }
-                    )
+                    Dict.fromList
+                        [ ( publicGame.player, publicGame.creator ) ]
 
                 Just gameState ->
-                    ( gameState.moves
-                    , gameState.players
-                    )
-
-        ( startTime, endTime ) =
-            case List.head moves of
-                Nothing ->
-                    ( Types.posixZero, Types.posixZero )
-
-                Just lastMove ->
-                    case List.head <| List.reverse moves of
-                        Nothing ->
-                            -- Can't happen
-                            ( lastMove.time, lastMove.time )
-
-                        Just firstMove ->
-                            ( firstMove.time, lastMove.time )
+                    gameState.players
     in
     { publicGame = publicGame
     , players = players
-    , startTime = startTime
-    , endTime = endTime
     }
 
 
@@ -790,8 +769,7 @@ winningPlayer hands =
                     Board.longestStraightFlush cards
             in
             if
-                len
-                    > winLen
+                (len > winLen)
                     || ((len == winLen) && Board.suitOrder suit winSuit == GT)
             then
                 ( ( len, suit ), player )
@@ -800,7 +778,7 @@ winningPlayer hands =
                 ( ( winLen, winSuit ), winPlayer )
 
         ( _, resPlayer ) =
-            List.foldr folder ( 0, Clubs ) indexedHands
+            List.foldr folder ( ( 0, Clubs ), 0 ) indexedHands
     in
     resPlayer
 
@@ -857,6 +835,9 @@ updateScore gameState =
                                     [ ( saidUncle, points - 1 )
                                     , ( won, 1 )
                                     ]
+
+                StockUsedWinner won ->
+                    [ ( won, 1 ) ]
     in
     if gameState.winner == NoWinner then
         gameState
