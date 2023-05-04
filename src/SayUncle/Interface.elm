@@ -551,6 +551,7 @@ generalMessageProcessorInternal isProxyServer state message =
 
         PlayReq { playerid, placement } ->
             let
+                body : GameId -> GameState -> Player -> ( Types.ServerState, Maybe Message )
                 body gameid gameState player =
                     if
                         not isProxyServer
@@ -561,6 +562,21 @@ generalMessageProcessorInternal isProxyServer state message =
 
                     else
                         case placement of
+                            ChooseTableau card ->
+                                ( state, Nothing )
+
+                            ChooseStock ->
+                                ( state, Nothing )
+
+                            SkipStock ->
+                                ( state, Nothing )
+
+                            Discard card ->
+                                ( state, Nothing )
+
+                            SayUncle ->
+                                ( state, Nothing )
+
                             ChooseNew ->
                                 case gameState.winner of
                                     NoWinner ->
