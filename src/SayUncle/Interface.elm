@@ -264,9 +264,20 @@ logSeed prefix state =
     state
 
 
-turnStockMessage : String
-turnStockMessage =
-    "Click the stock to turn over the top card."
+setNextPlayer : GameState -> GameState
+setNextPlayer gameState =
+    let
+        player =
+            gameState.player + 1
+    in
+    { gameState
+        | player =
+            if player >= Dict.size gameState.players then
+                0
+
+            else
+                player
+    }
 
 
 generalMessageProcessorInternal : Bool -> Types.ServerState -> Message -> ( Types.ServerState, Maybe Message )
@@ -625,7 +636,48 @@ generalMessageProcessorInternal isProxyServer state message =
                                         )
 
                             ChooseStock ->
-                                ( state, Nothing )
+                                if gameState.state /= ChooseStockState then
+                                    errorRes message state "ChooseStock not allowed"
+
+                                else
+                                    let
+                                        newGameState =
+                                            setNextPlayer gameState
+                                    in
+                                    if gameState.player == gameState.whoseTurn then
+                                        let
+                                            newGameState2 =
+                                                { newGameState
+                                                    | whoseTurn =
+                                                        newGameState.player
+                                                    , state =
+                                                        TurnStockState
+                                                    , board =
+                                                        { board
+                                                            | turnedStock = Nothing
+                                                        }
+                                                }
+                                        in
+                                        ( { state
+                                            | state = Just newGameState2
+                                          }
+                                        , Just <|
+                                            PlayRsp
+                                                { gameid = gameid
+                                                , gameState = newGameState2
+                                                }
+                                        )
+
+                                    else
+                                        ( { state
+                                            | state = Just newGameState
+                                          }
+                                        , Just <|
+                                            PlayRsp
+                                                { gameid = gameid
+                                                , gameState = newGameState
+                                                }
+                                        )
 
                             SkipStock ->
                                 ( state, Nothing )
