@@ -264,6 +264,11 @@ logSeed prefix state =
     state
 
 
+turnStockMessage : String
+turnStockMessage =
+    "Click the stock to turn over the top card."
+
+
 generalMessageProcessorInternal : Bool -> Types.ServerState -> Message -> ( Types.ServerState, Maybe Message )
 generalMessageProcessorInternal isProxyServer state message =
     let
@@ -561,9 +566,63 @@ generalMessageProcessorInternal isProxyServer state message =
                         errorRes message state "It's not your turn."
 
                     else
+                        let
+                            board =
+                                gameState.board
+                        in
                         case placement of
                             ChooseTableau card ->
-                                ( state, Nothing )
+                                case Array.get player board.hands of
+                                    Nothing ->
+                                        -- Should be an error
+                                        ( state, Nothing )
+
+                                    Just cards ->
+                                        let
+                                            newTableau =
+                                                Array.map
+                                                    (\maybeCard ->
+                                                        if Just card == maybeCard then
+                                                            Nothing
+
+                                                        else
+                                                            maybeCard
+                                                    )
+                                                    board.tableau
+
+                                            newBoard =
+                                                { board
+                                                    | tableau = newTableau
+                                                    , hands =
+                                                        Array.set player
+                                                            ((card :: cards)
+                                                                |> Board.sortCards
+                                                            )
+                                                            board.hands
+                                                }
+
+                                            newState : Types.State
+                                            newState =
+                                                if Board.isTableauEmpty newTableau then
+                                                    TurnStockState
+
+                                                else
+                                                    gameState.state
+
+                                            newGameState : GameState
+                                            newGameState =
+                                                { gameState
+                                                    | board = newBoard
+                                                    , state = newState
+                                                }
+                                        in
+                                        ( { state | state = Just newGameState }
+                                        , Just <|
+                                            PlayRsp
+                                                { gameid = gameid
+                                                , gameState = newGameState
+                                                }
+                                        )
 
                             ChooseStock ->
                                 ( state, Nothing )
@@ -597,13 +656,13 @@ generalMessageProcessorInternal isProxyServer state message =
                                                 else
                                                     p
 
-                                            board =
+                                            newBoard =
                                                 Board.initial playerCount
                                                     gameState.board.seed
 
                                             gs =
                                                 { gameState
-                                                    | board = board
+                                                    | board = newBoard
                                                     , whoseTurn = newPlayer
                                                     , player = newPlayer
                                                     , winner = NoWinner
