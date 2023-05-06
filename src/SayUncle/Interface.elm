@@ -586,7 +586,7 @@ generalMessageProcessorInternal isProxyServer state message =
                                 case Array.get player board.hands of
                                     Nothing ->
                                         -- Should be an error
-                                        ( state, Nothing )
+                                        errorRes message state "Can't find player's hand."
 
                                     Just cards ->
                                         let
@@ -645,28 +645,50 @@ generalMessageProcessorInternal isProxyServer state message =
                                             setNextPlayer gameState
                                     in
                                     if gameState.player == gameState.whoseTurn then
-                                        let
-                                            newGameState2 =
-                                                { newGameState
-                                                    | whoseTurn =
-                                                        newGameState.player
-                                                    , state =
-                                                        TurnStockState
-                                                    , board =
-                                                        { board
-                                                            | turnedStock = Nothing
-                                                        }
-                                                }
-                                        in
-                                        ( { state
-                                            | state = Just newGameState2
-                                          }
-                                        , Just <|
-                                            PlayRsp
-                                                { gameid = gameid
-                                                , gameState = newGameState2
-                                                }
-                                        )
+                                        case Array.get player board.hands of
+                                            Nothing ->
+                                                errorRes message
+                                                    state
+                                                    "Can't find player's hand."
+
+                                            Just cards ->
+                                                case board.turnedStock of
+                                                    Nothing ->
+                                                        errorRes message
+                                                            state
+                                                            "No stock card."
+
+                                                    Just card ->
+                                                        let
+                                                            newHands =
+                                                                Array.set player
+                                                                    ((card :: cards)
+                                                                        |> Board.sortCards
+                                                                    )
+                                                                    board.hands
+
+                                                            newGameState2 =
+                                                                { newGameState
+                                                                    | whoseTurn =
+                                                                        newGameState.player
+                                                                    , state =
+                                                                        DiscardState
+                                                                    , board =
+                                                                        { board
+                                                                            | turnedStock = Nothing
+                                                                            , hands = newHands
+                                                                        }
+                                                                }
+                                                        in
+                                                        ( { state
+                                                            | state = Just newGameState2
+                                                          }
+                                                        , Just <|
+                                                            PlayRsp
+                                                                { gameid = gameid
+                                                                , gameState = newGameState2
+                                                                }
+                                                        )
 
                                     else
                                         ( { state
@@ -680,7 +702,45 @@ generalMessageProcessorInternal isProxyServer state message =
                                         )
 
                             SkipStock ->
-                                ( state, Nothing )
+                                let
+                                    newGameState =
+                                        { gameState
+                                            | board =
+                                                { board
+                                                    | turnedStock = Nothing
+                                                }
+                                        }
+                                            |> setNextPlayer
+                                            |> populateWinner zeroTime
+                                in
+                                ( { state
+                                    | state =
+                                        Just
+                                            { newGameState
+                                                | whoseTurn =
+                                                    if
+                                                        newGameState.player
+                                                            == newGameState.whoseTurn
+                                                    then
+                                                        newGameState.player
+
+                                                    else
+                                                        newGameState.whoseTurn
+                                            }
+                                  }
+                                , Just <|
+                                    if newGameState.winner /= NoWinner then
+                                        GameOverRsp
+                                            { gameid = gameid
+                                            , gameState = newGameState
+                                            }
+
+                                    else
+                                        PlayRsp
+                                            { gameid = gameid
+                                            , gameState = newGameState
+                                            }
+                                )
 
                             Discard card ->
                                 ( state, Nothing )
@@ -908,6 +968,11 @@ winningPlayer hands =
             List.foldr folder ( ( 0, Clubs ), 0 ) indexedHands
     in
     resPlayer
+
+
+zeroTime : Posix
+zeroTime =
+    Time.millisToPosix 0
 
 
 populateWinner : Posix -> GameState -> GameState
