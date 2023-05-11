@@ -635,6 +635,50 @@ generalMessageProcessorInternal isProxyServer state message =
                                                 }
                                         )
 
+                            TurnStock ->
+                                if gameState.state /= TurnStockState then
+                                    errorRes message state "TurnStock not allowed"
+
+                                else
+                                    case board.turnedStock of
+                                        Just _ ->
+                                            errorRes message
+                                                state
+                                                "Already a turned stock card."
+
+                                        Nothing ->
+                                            if Deck.length board.stock == 0 then
+                                                errorRes message
+                                                    state
+                                                    "Stock is empty."
+
+                                            else
+                                                let
+                                                    ( card, newStock ) =
+                                                        Deck.draw board.stock
+
+                                                    newBoard =
+                                                        { board
+                                                            | turnedStock = Just card
+                                                            , stock = newStock
+                                                        }
+
+                                                    newGameState =
+                                                        { gameState
+                                                            | board = newBoard
+                                                            , state = ChooseStockState
+                                                        }
+                                                in
+                                                ( { state
+                                                    | state = Just newGameState
+                                                  }
+                                                , Just <|
+                                                    PlayRsp
+                                                        { gameid = gameid
+                                                        , gameState = newGameState
+                                                        }
+                                                )
+
                             ChooseStock ->
                                 if gameState.state /= ChooseStockState then
                                     errorRes message state "ChooseStock not allowed"
@@ -702,48 +746,56 @@ generalMessageProcessorInternal isProxyServer state message =
                                         )
 
                             SkipStock ->
-                                let
-                                    newGameState =
-                                        { gameState
-                                            | board =
-                                                { board
-                                                    | turnedStock = Nothing
+                                if gameState.state /= ChooseStockState then
+                                    errorRes message state "SkipStock not allowed"
+
+                                else
+                                    let
+                                        newGameState =
+                                            { gameState
+                                                | board =
+                                                    { board
+                                                        | turnedStock = Nothing
+                                                    }
+                                            }
+                                                |> setNextPlayer
+                                                |> populateWinner zeroTime
+                                    in
+                                    ( { state
+                                        | state =
+                                            Just
+                                                { newGameState
+                                                    | whoseTurn =
+                                                        if
+                                                            newGameState.player
+                                                                == newGameState.whoseTurn
+                                                        then
+                                                            newGameState.player
+
+                                                        else
+                                                            newGameState.whoseTurn
                                                 }
-                                        }
-                                            |> setNextPlayer
-                                            |> populateWinner zeroTime
-                                in
-                                ( { state
-                                    | state =
-                                        Just
-                                            { newGameState
-                                                | whoseTurn =
-                                                    if
-                                                        newGameState.player
-                                                            == newGameState.whoseTurn
-                                                    then
-                                                        newGameState.player
+                                      }
+                                    , Just <|
+                                        if newGameState.winner /= NoWinner then
+                                            GameOverRsp
+                                                { gameid = gameid
+                                                , gameState = newGameState
+                                                }
 
-                                                    else
-                                                        newGameState.whoseTurn
-                                            }
-                                  }
-                                , Just <|
-                                    if newGameState.winner /= NoWinner then
-                                        GameOverRsp
-                                            { gameid = gameid
-                                            , gameState = newGameState
-                                            }
-
-                                    else
-                                        PlayRsp
-                                            { gameid = gameid
-                                            , gameState = newGameState
-                                            }
-                                )
+                                        else
+                                            PlayRsp
+                                                { gameid = gameid
+                                                , gameState = newGameState
+                                                }
+                                    )
 
                             Discard card ->
-                                ( state, Nothing )
+                                if gameState.state /= DiscardState then
+                                    errorRes message state "Discard not allowed"
+
+                                else
+                                    ( state, Nothing )
 
                             SayUncle ->
                                 ( state, Nothing )

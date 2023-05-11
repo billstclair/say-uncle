@@ -333,6 +333,7 @@ updateResponseGameState updater message =
 type Choice
     = ChooseNew
     | ChooseTableau Card
+    | TurnStock
     | ChooseStock
     | SkipStock
     | Discard Card

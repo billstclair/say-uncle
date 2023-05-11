@@ -873,6 +873,9 @@ encodeChoice choice =
             ChooseTableau card ->
                 ( "ChooseTableau", encodeCard card )
 
+            TurnStock ->
+                ( "TurnStock", JE.null )
+
             ChooseStock ->
                 ( "ChooseStock", JE.null )
 
@@ -894,8 +897,8 @@ choiceDecoder =
             |> JD.andThen (\_ -> JD.succeed ChooseNew)
         , JD.field "ChooseTableau" cardDecoder
             |> JD.andThen (ChooseTableau >> JD.succeed)
-        , JD.field "ChooseTableau" cardDecoder
-            |> JD.andThen (ChooseTableau >> JD.succeed)
+        , JD.field "TurnStock" JD.value
+            |> JD.andThen (\_ -> JD.succeed TurnStock)
         , JD.field "ChooseStock" JD.value
             |> JD.andThen (\_ -> JD.succeed ChooseStock)
         , JD.field "SkipStock" JD.value
