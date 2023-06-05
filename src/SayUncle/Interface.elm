@@ -600,40 +600,45 @@ generalMessageProcessorInternal isProxyServer state message =
                                                             maybeCard
                                                     )
                                                     board.tableau
-
-                                            newBoard =
-                                                { board
-                                                    | tableau = newTableau
-                                                    , hands =
-                                                        Array.set player
-                                                            ((card :: cards)
-                                                                |> Board.sortCards
-                                                            )
-                                                            board.hands
-                                                }
-
-                                            newState : Types.State
-                                            newState =
-                                                if Board.isTableauEmpty newTableau then
-                                                    TurnStockState
-
-                                                else
-                                                    gameState.state
-
-                                            newGameState : GameState
-                                            newGameState =
-                                                { gameState
-                                                    | board = newBoard
-                                                    , state = newState
-                                                }
                                         in
-                                        ( { state | state = Just newGameState }
-                                        , Just <|
-                                            PlayRsp
-                                                { gameid = gameid
-                                                , gameState = newGameState
-                                                }
-                                        )
+                                        if board.tableau == newTableau then
+                                            errorRes message state "Card not in tableau."
+
+                                        else
+                                            let
+                                                newBoard =
+                                                    { board
+                                                        | tableau = newTableau
+                                                        , hands =
+                                                            Array.set player
+                                                                ((card :: cards)
+                                                                    |> Board.sortCards
+                                                                )
+                                                                board.hands
+                                                    }
+
+                                                newState : Types.State
+                                                newState =
+                                                    if Board.isTableauEmpty newTableau then
+                                                        TurnStockState
+
+                                                    else
+                                                        gameState.state
+
+                                                newGameState : GameState
+                                                newGameState =
+                                                    { gameState
+                                                        | board = newBoard
+                                                        , state = newState
+                                                    }
+                                            in
+                                            ( { state | state = Just newGameState }
+                                            , Just <|
+                                                PlayRsp
+                                                    { gameid = gameid
+                                                    , gameState = newGameState
+                                                    }
+                                            )
 
                             TurnStock ->
                                 if gameState.state /= TurnStockState then
