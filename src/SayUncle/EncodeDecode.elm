@@ -865,45 +865,58 @@ gameStateDecoder =
 
 encodeChoice : Choice -> Value
 encodeChoice choice =
-    JE.object
-        [ case choice of
-            ChooseNew ->
-                ( "ChooseNew", JE.null )
+    case choice of
+        ChooseNew ->
+            JE.string "ChooseNew"
 
-            ChooseTableau card ->
-                ( "ChooseTableau", encodeCard card )
+        ChooseTableau card ->
+            JE.object [ ( "ChooseTableau", encodeCard card ) ]
 
-            ChooseStock ->
-                ( "ChooseStock", JE.null )
+        TurnStock ->
+            JE.string "TurnStock"
 
-            SkipStock ->
-                ( "SkipStock", JE.null )
+        ChooseStock ->
+            JE.string "ChooseStock"
 
-            Discard card ->
-                ( "Discard", encodeCard card )
+        SkipStock ->
+            JE.string "SkipStock"
 
-            SayUncle ->
-                ( "SayUncle", JE.null )
-        ]
+        Discard card ->
+            JE.object [ ( "Discard", encodeCard card ) ]
+
+        SayUncle ->
+            JE.string "SayUncle"
 
 
 choiceDecoder : Decoder Choice
 choiceDecoder =
     JD.oneOf
-        [ JD.field "ChooseNew" JD.value
-            |> JD.andThen (\_ -> JD.succeed ChooseNew)
+        [ JD.string
+            |> JD.andThen
+                (\s ->
+                    case s of
+                        "ChooseNew" ->
+                            JD.succeed ChooseNew
+
+                        "TurnStock" ->
+                            JD.succeed TurnStock
+
+                        "ChooseStock" ->
+                            JD.succeed ChooseStock
+
+                        "SkipStock" ->
+                            JD.succeed SkipStock
+
+                        "SayUncle" ->
+                            JD.succeed SayUncle
+
+                        _ ->
+                            JD.fail <| "Unknown Choice: " ++ s
+                )
         , JD.field "ChooseTableau" cardDecoder
             |> JD.andThen (ChooseTableau >> JD.succeed)
-        , JD.field "ChooseTableau" cardDecoder
-            |> JD.andThen (ChooseTableau >> JD.succeed)
-        , JD.field "ChooseStock" JD.value
-            |> JD.andThen (\_ -> JD.succeed ChooseStock)
-        , JD.field "SkipStock" JD.value
-            |> JD.andThen (\_ -> JD.succeed SkipStock)
         , JD.field "Discard" cardDecoder
             |> JD.andThen (Discard >> JD.succeed)
-        , JD.field "SayUncle" JD.value
-            |> JD.andThen (\_ -> JD.succeed SayUncle)
         ]
 
 
