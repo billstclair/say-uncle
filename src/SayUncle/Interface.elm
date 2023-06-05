@@ -561,9 +561,66 @@ generalMessageProcessorInternal isProxyServer state message =
                         errorRes message state "It's not your turn."
 
                     else
+                        let
+                            board =
+                                gameState.board
+
+                            cards =
+                                Maybe.withDefault [] <|
+                                    Array.get player board.hands
+                        in
                         case placement of
                             ChooseTableau card ->
-                                ( state, Nothing )
+                                if
+                                    LE.notMember (Just card)
+                                        (Array.toList board.tableau)
+                                then
+                                    errorRes message state "Card not in tableau"
+
+                                else
+                                    let
+                                        newTableau =
+                                            Array.map
+                                                (\maybeCard ->
+                                                    if Just card == maybeCard then
+                                                        Nothing
+
+                                                    else
+                                                        maybeCard
+                                                )
+                                                board.tableau
+
+                                        newBoard =
+                                            { board
+                                                | tableau = newTableau
+                                                , hands =
+                                                    Array.set player
+                                                        (Board.sortCards <| card :: cards)
+                                                        board.hands
+                                            }
+
+                                        newState =
+                                            if Board.isTableauEmpty newTableau then
+                                                TurnStockState
+
+                                            else
+                                                gameState.state
+
+                                        newGameState =
+                                            { gameState
+                                                | board = newBoard
+                                                , state = newState
+                                            }
+                                    in
+                                    ( ServerInterface.updateGame gameid
+                                        newGameState
+                                        state
+                                    , PlayRsp
+                                        { gameid = gameid
+                                        , gameState = newGameState
+                                        }
+                                        |> Just
+                                    )
 
                             ChooseStock ->
                                 ( state, Nothing )
@@ -597,13 +654,13 @@ generalMessageProcessorInternal isProxyServer state message =
                                                 else
                                                     p
 
-                                            board =
+                                            newBoard =
                                                 Board.initial playerCount
                                                     gameState.board.seed
 
                                             gs =
                                                 { gameState
-                                                    | board = board
+                                                    | board = newBoard
                                                     , whoseTurn = newPlayer
                                                     , player = newPlayer
                                                     , winner = NoWinner
