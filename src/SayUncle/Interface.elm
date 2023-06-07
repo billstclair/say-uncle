@@ -972,7 +972,49 @@ playReq isProxyServer state message playerid placement gameid gameState player =
                                 )
 
             SayUncle ->
-                ( state, Nothing )
+                if
+                    gameState.state
+                        /= TurnStockState
+                        && gameState.state
+                        /= ChooseStockState
+                then
+                    errorRes message
+                        state
+                        "Can only say Uncle when turning or choosing from stock."
+
+                else
+                    let
+                        winner =
+                            winningPlayer board.hands
+
+                        newBoard =
+                            { board
+                                | stock = Deck.newDeck []
+                                , turnedStock = Nothing
+                            }
+
+                        newGameState =
+                            { gameState
+                                | winner =
+                                    SayUncleWinner
+                                        { saidUncle = player
+                                        , won = winner
+                                        }
+                                , state =
+                                    GameOverState winner
+                                , board = newBoard
+                            }
+                                |> updateScore
+                    in
+                    ( ServerInterface.updateGame gameid
+                        newGameState
+                        state
+                    , Just <|
+                        PlayRsp
+                            { gameid = gameid
+                            , gameState = newGameState
+                            }
+                    )
 
             ChooseNew ->
                 case gameState.winner of
