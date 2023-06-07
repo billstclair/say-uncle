@@ -1106,11 +1106,14 @@ populateWinner gameState =
                 let
                     winner =
                         winningPlayer board.hands
+
+                    newGameState =
+                        { gameState
+                            | winner = StockUsedWinner winner
+                            , state = GameOverState winner
+                        }
                 in
-                { gameState
-                    | winner = StockUsedWinner winner
-                    , state = GameOverState winner
-                }
+                updateScore newGameState
 
             else
                 gameState
@@ -1121,45 +1124,41 @@ populateWinner gameState =
 
 updateScore : GameState -> GameState
 updateScore gameState =
-    let
-        score =
-            gameState.score
-
-        names =
-            gameState.players
-
-        deltas : List ( Player, Int )
-        deltas =
-            case gameState.winner of
-                NoWinner ->
-                    []
-
-                SayUncleWinner { saidUncle, won } ->
-                    if won == saidUncle then
-                        [ ( saidUncle, 2 ) ]
-
-                    else
-                        case Dict.get saidUncle score.points of
-                            Nothing ->
-                                []
-
-                            Just points ->
-                                if points == 0 then
-                                    [ ( won, 2 ) ]
-
-                                else
-                                    [ ( saidUncle, points - 1 )
-                                    , ( won, 1 )
-                                    ]
-
-                StockUsedWinner won ->
-                    [ ( won, 1 ) ]
-    in
     if gameState.winner == NoWinner then
         gameState
 
     else
         let
+            score =
+                gameState.score
+
+            deltas : List ( Player, Int )
+            deltas =
+                case gameState.winner of
+                    NoWinner ->
+                        []
+
+                    StockUsedWinner won ->
+                        [ ( won, 1 ) ]
+
+                    SayUncleWinner { saidUncle, won } ->
+                        if won == saidUncle then
+                            [ ( saidUncle, 2 ) ]
+
+                        else
+                            case Dict.get saidUncle score.points of
+                                Nothing ->
+                                    [ ( won, 2 ) ]
+
+                                Just points ->
+                                    if points == 0 then
+                                        [ ( won, 2 ) ]
+
+                                    else
+                                        [ ( saidUncle, points - 1 )
+                                        , ( won, 1 )
+                                        ]
+
             folder : ( Player, Int ) -> Score -> Score
             folder ( player, delta ) score1 =
                 let
