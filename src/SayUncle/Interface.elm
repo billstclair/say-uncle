@@ -282,10 +282,6 @@ setNextPlayer gameState =
 
 generalMessageProcessorInternal : Bool -> Types.ServerState -> Message -> ( Types.ServerState, Maybe Message )
 generalMessageProcessorInternal isProxyServer state message =
-    let
-        time =
-            state.time
-    in
     case message of
         NewReq { name, publicType, maxPlayers, winningPoints, seed, restoreState, maybeGameid } ->
             let
@@ -530,8 +526,7 @@ generalMessageProcessorInternal isProxyServer state message =
                     body gameid player =
                         let
                             gs =
-                                gameState
-                                    |> populateWinner time
+                                populateWinner gameState
 
                             state2 =
                                 populateEndOfGameStatistics gs state
@@ -632,7 +627,9 @@ generalMessageProcessorInternal isProxyServer state message =
                                                         , state = newState
                                                     }
                                             in
-                                            ( { state | state = Just newGameState }
+                                            ( ServerInterface.updateGame gameid
+                                                newGameState
+                                                state
                                             , Just <|
                                                 PlayRsp
                                                     { gameid = gameid
@@ -653,6 +650,7 @@ generalMessageProcessorInternal isProxyServer state message =
 
                                         Nothing ->
                                             if Deck.length board.stock == 0 then
+                                                -- can't happen
                                                 errorRes message
                                                     state
                                                     "Stock is empty."
@@ -674,9 +672,9 @@ generalMessageProcessorInternal isProxyServer state message =
                                                             , state = ChooseStockState
                                                         }
                                                 in
-                                                ( { state
-                                                    | state = Just newGameState
-                                                  }
+                                                ( ServerInterface.updateGame gameid
+                                                    newGameState
+                                                    state
                                                 , Just <|
                                                     PlayRsp
                                                         { gameid = gameid
@@ -693,7 +691,35 @@ generalMessageProcessorInternal isProxyServer state message =
                                         newGameState =
                                             setNextPlayer gameState
                                     in
-                                    if gameState.player == gameState.whoseTurn then
+                                    if newGameState.player == newGameState.whoseTurn then
+                                        let
+                                            newBoard =
+                                                { board
+                                                    | turnedStock = Nothing
+                                                }
+
+                                            gs =
+                                                { newGameState
+                                                    | board = board
+                                                    , state = TurnStockState
+                                                }
+                                                    |> setNextPlayer
+                                                    |> populateWinner
+
+                                            nextGameState =
+                                                { gs | whoseTurn = gs.player }
+                                        in
+                                        ( ServerInterface.updateGame gameid
+                                            nextGameState
+                                            state
+                                        , Just <|
+                                            PlayRsp
+                                                { gameid = gameid
+                                                , gameState = nextGameState
+                                                }
+                                        )
+
+                                    else
                                         case Array.get player board.hands of
                                             Nothing ->
                                                 errorRes message
@@ -729,26 +755,16 @@ generalMessageProcessorInternal isProxyServer state message =
                                                                         }
                                                                 }
                                                         in
-                                                        ( { state
-                                                            | state = Just newGameState2
-                                                          }
+                                                        ( ServerInterface.updateGame
+                                                            gameid
+                                                            newGameState2
+                                                            state
                                                         , Just <|
                                                             PlayRsp
                                                                 { gameid = gameid
                                                                 , gameState = newGameState2
                                                                 }
                                                         )
-
-                                    else
-                                        ( { state
-                                            | state = Just newGameState
-                                          }
-                                        , Just <|
-                                            PlayRsp
-                                                { gameid = gameid
-                                                , gameState = newGameState
-                                                }
-                                        )
 
                             SkipStock ->
                                 if gameState.state /= ChooseStockState then
@@ -764,7 +780,7 @@ generalMessageProcessorInternal isProxyServer state message =
                                                     }
                                             }
                                                 |> setNextPlayer
-                                                |> populateWinner zeroTime
+                                                |> populateWinner
                                     in
                                     ( { state
                                         | state =
@@ -1027,13 +1043,8 @@ winningPlayer hands =
     resPlayer
 
 
-zeroTime : Posix
-zeroTime =
-    Time.millisToPosix 0
-
-
-populateWinner : Posix -> GameState -> GameState
-populateWinner time gameState =
+populateWinner : GameState -> GameState
+populateWinner gameState =
     case gameState.winner of
         NoWinner ->
             let
@@ -1041,8 +1052,13 @@ populateWinner time gameState =
                     gameState.board
             in
             if Deck.length board.stock == 0 && board.turnedStock == Nothing then
+                let
+                    winner =
+                        winningPlayer board.hands
+                in
                 { gameState
-                    | winner = StockUsedWinner <| winningPlayer board.hands
+                    | winner = StockUsedWinner winner
+                    , state = GameOverState winner
                 }
 
             else
