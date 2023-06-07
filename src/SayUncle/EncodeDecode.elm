@@ -777,13 +777,6 @@ encodeState state =
         DiscardState ->
             JE.string "DiscardState"
 
-        ScoreState scores ->
-            JE.object
-                [ ( "ScoreState"
-                  , JE.list encodeIntPair scores
-                  )
-                ]
-
         GameOverState winner ->
             JE.object
                 [ ( "GameOverState", JE.int winner ) ]
@@ -814,8 +807,6 @@ stateDecoder =
                         _ ->
                             JD.fail "Illegal string state"
                 )
-        , JD.field "ScoreState" (JD.list intPairDecoder)
-            |> JD.andThen (\pairs -> JD.succeed <| ScoreState pairs)
         , JD.field "GameOverState" JD.int
             |> JD.map GameOverState
         ]

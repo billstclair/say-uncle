@@ -973,10 +973,8 @@ playReq isProxyServer state message playerid placement gameid gameState player =
 
             SayUncle ->
                 if
-                    gameState.state
-                        /= TurnStockState
-                        && gameState.state
-                        /= ChooseStockState
+                    (gameState.state /= TurnStockState)
+                        && (gameState.state /= ChooseStockState)
                 then
                     errorRes message
                         state

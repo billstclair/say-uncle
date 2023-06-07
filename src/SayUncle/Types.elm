@@ -266,7 +266,6 @@ type State
     | TurnStockState
     | ChooseStockState
     | DiscardState
-    | ScoreState (List ( Player, Int ))
     | GameOverState Player
 
 
