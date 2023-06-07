@@ -561,317 +561,19 @@ generalMessageProcessorInternal isProxyServer state message =
                     )
 
         PlayReq { playerid, placement } ->
-            let
-                body : GameId -> GameState -> Player -> ( Types.ServerState, Maybe Message )
-                body gameid gameState player =
-                    if
-                        not isProxyServer
-                            && (gameState.winner == NoWinner)
-                            && (player /= gameState.player)
-                    then
-                        errorRes message state "It's not your turn."
-
-                    else
-                        let
-                            board =
-                                gameState.board
-                        in
-                        case placement of
-                            ChooseTableau card ->
-                                case Array.get player board.hands of
-                                    Nothing ->
-                                        -- Should be an error
-                                        errorRes message state "Can't find player's hand."
-
-                                    Just cards ->
-                                        let
-                                            newTableau =
-                                                Array.map
-                                                    (\maybeCard ->
-                                                        if Just card == maybeCard then
-                                                            Nothing
-
-                                                        else
-                                                            maybeCard
-                                                    )
-                                                    board.tableau
-                                        in
-                                        if board.tableau == newTableau then
-                                            errorRes message state "Card not in tableau."
-
-                                        else
-                                            let
-                                                newBoard =
-                                                    { board
-                                                        | tableau = newTableau
-                                                        , hands =
-                                                            Array.set player
-                                                                ((card :: cards)
-                                                                    |> Board.sortCards
-                                                                )
-                                                                board.hands
-                                                    }
-
-                                                newState : Types.State
-                                                newState =
-                                                    if Board.isTableauEmpty newTableau then
-                                                        TurnStockState
-
-                                                    else
-                                                        gameState.state
-
-                                                newGameState : GameState
-                                                newGameState =
-                                                    { gameState
-                                                        | board = newBoard
-                                                        , state = newState
-                                                    }
-                                            in
-                                            ( ServerInterface.updateGame gameid
-                                                newGameState
-                                                state
-                                            , Just <|
-                                                PlayRsp
-                                                    { gameid = gameid
-                                                    , gameState = newGameState
-                                                    }
-                                            )
-
-                            TurnStock ->
-                                if gameState.state /= TurnStockState then
-                                    errorRes message state "TurnStock not allowed"
-
-                                else
-                                    case board.turnedStock of
-                                        Just _ ->
-                                            errorRes message
-                                                state
-                                                "Already a turned stock card."
-
-                                        Nothing ->
-                                            if Deck.length board.stock == 0 then
-                                                -- can't happen
-                                                errorRes message
-                                                    state
-                                                    "Stock is empty."
-
-                                            else
-                                                let
-                                                    ( card, newStock ) =
-                                                        Deck.draw board.stock
-
-                                                    newBoard =
-                                                        { board
-                                                            | turnedStock = Just card
-                                                            , stock = newStock
-                                                        }
-
-                                                    newGameState =
-                                                        { gameState
-                                                            | board = newBoard
-                                                            , state = ChooseStockState
-                                                        }
-                                                in
-                                                ( ServerInterface.updateGame gameid
-                                                    newGameState
-                                                    state
-                                                , Just <|
-                                                    PlayRsp
-                                                        { gameid = gameid
-                                                        , gameState = newGameState
-                                                        }
-                                                )
-
-                            ChooseStock ->
-                                if gameState.state /= ChooseStockState then
-                                    errorRes message state "ChooseStock not allowed"
-
-                                else
-                                    let
-                                        newGameState =
-                                            setNextPlayer gameState
-                                    in
-                                    if newGameState.player == newGameState.whoseTurn then
-                                        let
-                                            newBoard =
-                                                { board
-                                                    | turnedStock = Nothing
-                                                }
-
-                                            gs =
-                                                { newGameState
-                                                    | board = board
-                                                    , state = TurnStockState
-                                                }
-                                                    |> setNextPlayer
-                                                    |> populateWinner
-
-                                            nextGameState =
-                                                { gs | whoseTurn = gs.player }
-                                        in
-                                        ( ServerInterface.updateGame gameid
-                                            nextGameState
-                                            state
-                                        , Just <|
-                                            PlayRsp
-                                                { gameid = gameid
-                                                , gameState = nextGameState
-                                                }
-                                        )
-
-                                    else
-                                        case Array.get player board.hands of
-                                            Nothing ->
-                                                errorRes message
-                                                    state
-                                                    "Can't find player's hand."
-
-                                            Just cards ->
-                                                case board.turnedStock of
-                                                    Nothing ->
-                                                        errorRes message
-                                                            state
-                                                            "No stock card."
-
-                                                    Just card ->
-                                                        let
-                                                            newHands =
-                                                                Array.set player
-                                                                    ((card :: cards)
-                                                                        |> Board.sortCards
-                                                                    )
-                                                                    board.hands
-
-                                                            newGameState2 =
-                                                                { newGameState
-                                                                    | whoseTurn =
-                                                                        newGameState.player
-                                                                    , state =
-                                                                        DiscardState
-                                                                    , board =
-                                                                        { board
-                                                                            | turnedStock = Nothing
-                                                                            , hands = newHands
-                                                                        }
-                                                                }
-                                                        in
-                                                        ( ServerInterface.updateGame
-                                                            gameid
-                                                            newGameState2
-                                                            state
-                                                        , Just <|
-                                                            PlayRsp
-                                                                { gameid = gameid
-                                                                , gameState = newGameState2
-                                                                }
-                                                        )
-
-                            SkipStock ->
-                                if gameState.state /= ChooseStockState then
-                                    errorRes message state "SkipStock not allowed"
-
-                                else
-                                    let
-                                        newGameState =
-                                            { gameState
-                                                | board =
-                                                    { board
-                                                        | turnedStock = Nothing
-                                                    }
-                                            }
-                                                |> setNextPlayer
-                                                |> populateWinner
-                                    in
-                                    ( { state
-                                        | state =
-                                            Just
-                                                { newGameState
-                                                    | whoseTurn =
-                                                        if
-                                                            newGameState.player
-                                                                == newGameState.whoseTurn
-                                                        then
-                                                            newGameState.player
-
-                                                        else
-                                                            newGameState.whoseTurn
-                                                }
-                                      }
-                                    , Just <|
-                                        if newGameState.winner /= NoWinner then
-                                            GameOverRsp
-                                                { gameid = gameid
-                                                , gameState = newGameState
-                                                }
-
-                                        else
-                                            PlayRsp
-                                                { gameid = gameid
-                                                , gameState = newGameState
-                                                }
-                                    )
-
-                            Discard card ->
-                                if gameState.state /= DiscardState then
-                                    errorRes message state "Discard not allowed"
-
-                                else
-                                    ( state, Nothing )
-
-                            SayUncle ->
-                                ( state, Nothing )
-
-                            ChooseNew ->
-                                case gameState.winner of
-                                    NoWinner ->
-                                        errorRes message state "Game not over"
-
-                                    _ ->
-                                        let
-                                            playerCount =
-                                                Dict.size gameState.players
-
-                                            p =
-                                                gameState.player + 1
-
-                                            newPlayer =
-                                                if p == playerCount then
-                                                    0
-
-                                                else
-                                                    p
-
-                                            newBoard =
-                                                Board.initial playerCount
-                                                    gameState.board.seed
-
-                                            gs =
-                                                { gameState
-                                                    | board = newBoard
-                                                    , whoseTurn = newPlayer
-                                                    , player = newPlayer
-                                                    , winner = NoWinner
-                                                    , private = Types.emptyPrivateGameState
-                                                }
-
-                                            state2 =
-                                                bumpStatistic .activeGames state
-                                        in
-                                        ( ServerInterface.updateGame gameid gs state2
-                                        , Just <|
-                                            AnotherGameRsp
-                                                { gameid = gameid
-                                                , gameState = gs
-                                                , playerid = playerid
-                                                }
-                                        )
-            in
             case lookupGame message playerid state of
                 Err res ->
                     Debug.log "PlayReq Err" res
 
                 Ok ( gameid, gameState, participant ) ->
-                    body gameid gameState participant
+                    playReq isProxyServer
+                        state
+                        message
+                        playerid
+                        placement
+                        gameid
+                        gameState
+                        participant
 
         PublicGamesReq { subscribe, forName, gameid } ->
             -- subscribe is processed by the server code only
@@ -967,6 +669,311 @@ generalMessageProcessorInternal isProxyServer state message =
 
         _ ->
             errorRes message state "Received a non-request."
+
+
+playReq : Bool -> Types.ServerState -> Message -> PlayerId -> Choice -> GameId -> GameState -> Participant -> ( Types.ServerState, Maybe Message )
+playReq isProxyServer state message playerid placement gameid gameState player =
+    if
+        not isProxyServer
+            && (gameState.winner == NoWinner)
+            && (player /= gameState.player)
+    then
+        errorRes message state "It's not your turn."
+
+    else
+        let
+            board =
+                gameState.board
+        in
+        case placement of
+            ChooseTableau card ->
+                case Array.get player board.hands of
+                    Nothing ->
+                        -- Should be an error
+                        errorRes message state "Can't find player's hand."
+
+                    Just cards ->
+                        let
+                            newTableau =
+                                Array.map
+                                    (\maybeCard ->
+                                        if Just card == maybeCard then
+                                            Nothing
+
+                                        else
+                                            maybeCard
+                                    )
+                                    board.tableau
+                        in
+                        if board.tableau == newTableau then
+                            errorRes message state "Card not in tableau."
+
+                        else
+                            let
+                                newBoard =
+                                    { board
+                                        | tableau = newTableau
+                                        , hands =
+                                            Array.set player
+                                                ((card :: cards)
+                                                    |> Board.sortCards
+                                                )
+                                                board.hands
+                                    }
+
+                                newState : Types.State
+                                newState =
+                                    if Board.isTableauEmpty newTableau then
+                                        TurnStockState
+
+                                    else
+                                        gameState.state
+
+                                newGameState : GameState
+                                newGameState =
+                                    { gameState
+                                        | board = newBoard
+                                        , state = newState
+                                    }
+                            in
+                            ( ServerInterface.updateGame gameid
+                                newGameState
+                                state
+                            , Just <|
+                                PlayRsp
+                                    { gameid = gameid
+                                    , gameState = newGameState
+                                    }
+                            )
+
+            TurnStock ->
+                if gameState.state /= TurnStockState then
+                    errorRes message state "TurnStock not allowed"
+
+                else
+                    case board.turnedStock of
+                        Just _ ->
+                            errorRes message
+                                state
+                                "Already a turned stock card."
+
+                        Nothing ->
+                            if Deck.length board.stock == 0 then
+                                -- can't happen
+                                errorRes message
+                                    state
+                                    "Stock is empty."
+
+                            else
+                                let
+                                    ( card, newStock ) =
+                                        Deck.draw board.stock
+
+                                    newBoard =
+                                        { board
+                                            | turnedStock = Just card
+                                            , stock = newStock
+                                        }
+
+                                    newGameState =
+                                        { gameState
+                                            | board = newBoard
+                                            , state = ChooseStockState
+                                        }
+                                in
+                                ( ServerInterface.updateGame gameid
+                                    newGameState
+                                    state
+                                , Just <|
+                                    PlayRsp
+                                        { gameid = gameid
+                                        , gameState = newGameState
+                                        }
+                                )
+
+            ChooseStock ->
+                if gameState.state /= ChooseStockState then
+                    errorRes message state "ChooseStock not allowed"
+
+                else
+                    let
+                        newGameState =
+                            setNextPlayer gameState
+                    in
+                    if newGameState.player == newGameState.whoseTurn then
+                        let
+                            newBoard =
+                                { board
+                                    | turnedStock = Nothing
+                                }
+
+                            gs =
+                                { newGameState
+                                    | board = board
+                                    , state = TurnStockState
+                                }
+                                    |> setNextPlayer
+                                    |> populateWinner
+
+                            nextGameState =
+                                { gs | whoseTurn = gs.player }
+                        in
+                        ( ServerInterface.updateGame gameid
+                            nextGameState
+                            state
+                        , Just <|
+                            PlayRsp
+                                { gameid = gameid
+                                , gameState = nextGameState
+                                }
+                        )
+
+                    else
+                        case Array.get player board.hands of
+                            Nothing ->
+                                errorRes message
+                                    state
+                                    "Can't find player's hand."
+
+                            Just cards ->
+                                case board.turnedStock of
+                                    Nothing ->
+                                        errorRes message
+                                            state
+                                            "No stock card."
+
+                                    Just card ->
+                                        let
+                                            newHands =
+                                                Array.set player
+                                                    ((card :: cards)
+                                                        |> Board.sortCards
+                                                    )
+                                                    board.hands
+
+                                            newGameState2 =
+                                                { newGameState
+                                                    | whoseTurn =
+                                                        newGameState.player
+                                                    , state =
+                                                        DiscardState
+                                                    , board =
+                                                        { board
+                                                            | turnedStock = Nothing
+                                                            , hands = newHands
+                                                        }
+                                                }
+                                        in
+                                        ( ServerInterface.updateGame
+                                            gameid
+                                            newGameState2
+                                            state
+                                        , Just <|
+                                            PlayRsp
+                                                { gameid = gameid
+                                                , gameState = newGameState2
+                                                }
+                                        )
+
+            SkipStock ->
+                if gameState.state /= ChooseStockState then
+                    errorRes message state "SkipStock not allowed"
+
+                else
+                    let
+                        newGameState =
+                            { gameState
+                                | board =
+                                    { board
+                                        | turnedStock = Nothing
+                                    }
+                            }
+                                |> setNextPlayer
+                                |> populateWinner
+                    in
+                    ( { state
+                        | state =
+                            Just
+                                { newGameState
+                                    | whoseTurn =
+                                        if
+                                            newGameState.player
+                                                == newGameState.whoseTurn
+                                        then
+                                            newGameState.player
+
+                                        else
+                                            newGameState.whoseTurn
+                                }
+                      }
+                    , Just <|
+                        if newGameState.winner /= NoWinner then
+                            GameOverRsp
+                                { gameid = gameid
+                                , gameState = newGameState
+                                }
+
+                        else
+                            PlayRsp
+                                { gameid = gameid
+                                , gameState = newGameState
+                                }
+                    )
+
+            Discard card ->
+                if gameState.state /= DiscardState then
+                    errorRes message state "Discard not allowed"
+
+                else
+                    ( state, Nothing )
+
+            SayUncle ->
+                ( state, Nothing )
+
+            ChooseNew ->
+                case gameState.winner of
+                    NoWinner ->
+                        errorRes message state "Game not over"
+
+                    _ ->
+                        let
+                            playerCount =
+                                Dict.size gameState.players
+
+                            p =
+                                gameState.player + 1
+
+                            newPlayer =
+                                if p == playerCount then
+                                    0
+
+                                else
+                                    p
+
+                            newBoard =
+                                Board.initial playerCount
+                                    gameState.board.seed
+
+                            gs =
+                                { gameState
+                                    | board = newBoard
+                                    , whoseTurn = newPlayer
+                                    , player = newPlayer
+                                    , winner = NoWinner
+                                    , private = Types.emptyPrivateGameState
+                                }
+
+                            state2 =
+                                bumpStatistic .activeGames state
+                        in
+                        ( ServerInterface.updateGame gameid gs state2
+                        , Just <|
+                            AnotherGameRsp
+                                { gameid = gameid
+                                , gameState = gs
+                                , playerid = playerid
+                                }
+                        )
 
 
 publicGameAddPlayers : Types.ServerState -> PublicGame -> PublicGameAndPlayers
