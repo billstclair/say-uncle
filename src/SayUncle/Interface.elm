@@ -925,7 +925,51 @@ playReq isProxyServer state message playerid placement gameid gameState player =
                     errorRes message state "Discard not allowed"
 
                 else
-                    ( state, Nothing )
+                    case Array.get player board.hands of
+                        Nothing ->
+                            errorRes message
+                                state
+                                "Can't find player's hand."
+
+                        Just cards ->
+                            if not (List.member card cards) then
+                                errorRes message
+                                    state
+                                    "Discarded card is not in your hand."
+
+                            else
+                                let
+                                    newCards =
+                                        List.filter ((/=) card) cards
+
+                                    newHands =
+                                        Array.set player newCards board.hands
+
+                                    newBoard =
+                                        { board | hands = newHands }
+
+                                    newGameState =
+                                        { gameState
+                                            | board = newBoard
+                                            , state = TurnStockState
+                                        }
+                                            |> setNextPlayer
+                                            |> populateWinner
+
+                                    nextGameState =
+                                        { newGameState
+                                            | whoseTurn = newGameState.player
+                                        }
+                                in
+                                ( ServerInterface.updateGame gameid
+                                    nextGameState
+                                    state
+                                , Just <|
+                                    PlayRsp
+                                        { gameid = gameid
+                                        , gameState = nextGameState
+                                        }
+                                )
 
             SayUncle ->
                 ( state, Nothing )
