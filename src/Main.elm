@@ -12,8 +12,6 @@
 
 port module Main exposing (main)
 
---import Agog.Documentation as Documentation
-
 import Browser exposing (Document, UrlRequest(..))
 import Browser.Dom as Dom exposing (Viewport)
 import Browser.Events as Events
@@ -97,32 +95,23 @@ import PortFunnel.Notification as Notification exposing (Permission(..))
 import PortFunnel.WebSocket as WebSocket exposing (Response(..))
 import PortFunnels exposing (FunnelDict, Handler(..), State)
 import Random exposing (Seed)
-import SayUncle.Board as Board exposing (rc)
+import SayUncle.Board as Board
 import SayUncle.EncodeDecode as ED
 import SayUncle.Interface as Interface
 import SayUncle.Types as Types
     exposing
-        ( ArchivedGame
-        , Board
+        ( Board
         , Choice(..)
-        , ChooseMoveOption(..)
-        , Color(..)
         , GameState
         , Message(..)
-        , MovesOrJumps(..)
         , NamedGame
-        , OneMove
-        , OneMoveSequence(..)
         , Page(..)
         , Participant(..)
-        , PieceType(..)
         , Player(..)
         , PlayerNames
         , PublicGame
         , PublicGameAndPlayers
         , PublicType(..)
-        , RequestUndo(..)
-        , RotateBoard(..)
         , RowCol
         , SavedModel
         , Score
@@ -131,9 +120,6 @@ import SayUncle.Types as Types
         , StatisticsKeys
         , Style
         , StyleType(..)
-        , TestMode
-        , TestModeInitialState
-        , UndoWhichJumps(..)
         , WinReason(..)
         , Winner(..)
         , statisticsKeys
@@ -217,19 +203,6 @@ type AskYesNo a
     | AskNo
 
 
-type alias ChooseMoveOptionsUI =
-    { corruptJumped : AskYesNo ()
-    , makeHulk : AskYesNo RowCol
-    }
-
-
-chooseMoveOptionsUINo : ChooseMoveOptionsUI
-chooseMoveOptionsUINo =
-    { corruptJumped = AskNo
-    , makeHulk = AskNo
-    }
-
-
 type alias Game =
     NamedGame Msg
 
@@ -256,7 +229,6 @@ type alias Model =
     , publicGames : List PublicGameAndPlayers
     , time : Posix
     , requestedNew : Bool
-    , chooseMoveOptionsUI : ChooseMoveOptionsUI
     , delayedClick : Maybe RowCol
     , reallyClearStorage : Bool
     , statistics : Maybe Statistics
@@ -265,24 +237,17 @@ type alias Model =
     , notificationPermission : Maybe Permission
     , visible : Bool
     , soundFile : Maybe String
-    , showArchive : Maybe ( Game, Int )
-    , showMove : Maybe ( Game, Int )
     , messageQueue : Fifo MessageQueueEntry
     , showMessageQueue : Bool
 
     -- persistent below here
     , gamename : String
     , page : Page
-    , chooseFirst : Player
-    , lastTestMode : Maybe TestMode
     , gameid : String
     , settings : Settings
     , styleType : StyleType
-    , rotate : RotateBoard
     , notificationsEnabled : Bool
     , soundEnabled : Bool
-    , requestUndoMessage : String
-    , denyUndoMessage : String
     }
 
 
@@ -307,51 +272,29 @@ type Msg
     | Tick Posix
     | IncomingMessage Bool ServerInterface Message
     | RecordMessage Bool Bool Message
-    | SetChooseFirst Player
-    | SetRotate RotateBoard
     | SetIsLocal Bool
     | SetDarkMode Bool
-    | SetRequestUndoMessage String
-    | SetDenyUndoMessage String
-    | SendRequestUndo
-    | SendAcceptUndo
-    | SendDenyUndo
     | SetName String
     | SetIsPublic Bool
     | SetForName String
     | SetServerUrl String
     | SetGameid String
     | SetGameName GameName
-    | ReviewMoves Int
-    | SetMoveIndex Int
-    | SetArchiveIndex String
-    | SwitchGame GameName
-    | RenameGame
     | SetPage Page
     | SetHideTitle Bool
     | NewGame
     | StartGame
     | Join
     | JoinGame GameId
-    | JoinGameAsWatcher GameId
     | Disconnect
-    | SetTestMode Bool
     | SetShowMessageQueue Bool
     | SetNotificationsEnabled Bool
     | SetSoundEnabled Bool
-    | EraseBoard
-    | RevertBoard
     | InitialBoard
-    | SetTestClear Bool
-    | SetTestColor Color
-    | SetTestPieceType String
     | Reload
     | MaybeClearStorage
     | ClearStorage
     | Click ( Int, Int )
-    | CorruptJumpedUI (AskYesNo ())
-    | MakeHulkUI (AskYesNo RowCol)
-    | SendUndoJumps UndoWhichJumps
     | ChatUpdate String ChatSettings (Cmd Msg)
     | ChatSend String ChatSettings
     | ChatClear
@@ -503,12 +446,10 @@ initialGame seed =
     , isLocal = False
     , serverUrl = WhichServer.serverUrl
     , otherPlayerid = ""
-    , player = WhitePlayer
-    , watcherName = Nothing
+    , player = 0
     , playerid = ""
     , isLive = False
     , yourWins = 0
-    , archives = []
 
     -- not persistent
     , interfaceIsProxy = True
@@ -580,7 +521,6 @@ init flags url key =
             , publicGames = []
             , time = Time.millisToPosix 0
             , requestedNew = False
-            , chooseMoveOptionsUI = chooseMoveOptionsUINo
             , delayedClick = Nothing
             , reallyClearStorage = False
             , statistics = Nothing
@@ -589,24 +529,17 @@ init flags url key =
             , notificationPermission = Nothing
             , visible = True
             , soundFile = Nothing
-            , showArchive = Nothing
-            , showMove = Nothing
             , messageQueue = Fifo.empty
             , showMessageQueue = False
-            , styleType = LightStyle
-            , lastTestMode = Nothing
 
             -- persistent fields
             , gamename = game.gamename
             , page = MainPage
-            , chooseFirst = WhitePlayer
             , gameid = ""
             , settings = Types.emptySettings
-            , rotate = RotateWhiteDown
+            , styleType = LightStyle
             , notificationsEnabled = False
             , soundEnabled = False
-            , requestUndoMessage = ""
-            , denyUndoMessage = ""
             }
     in
     model
@@ -629,8 +562,8 @@ type alias NewReqBody =
 
 initialNewReqBody : String -> NewReqBody
 initialNewReqBody gamename =
-    { name = "White"
-    , player = WhitePlayer
+    { name = ""
+    , player = 0
     , publicType = NotPublic
     , gamename = gamename
     , restoreState = Nothing
