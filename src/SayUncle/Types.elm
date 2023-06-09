@@ -18,6 +18,7 @@ module SayUncle.Types exposing
     , GameState
     , InitialBoard
     , Message(..)
+    , MessageForLog(..)
     , NamedGame
     , Page(..)
     , Participant
@@ -511,6 +512,99 @@ messageToGameid message =
 
         _ ->
             Nothing
+
+
+type MessageForLog
+    = NewReqLog
+        { name : String
+        , publicType : PublicType
+        , maxPlayers : Int
+        , winningPoints : Int
+        , restoreState : Maybe String
+        , maybeGameid : Maybe GameId
+        }
+    | NewRspLog
+        { gameid : GameId
+        , playerid : PlayerId
+        , player : Player
+        , name : String
+        , publicType : PublicType
+        , gameState : String
+        , wasRestored : Bool
+        }
+    | JoinReqLog
+        { gameid : GameId
+        , name : String
+        }
+    | RejoinReqLog
+        { gameid : GameId
+        , playerid : PlayerId
+        }
+    | JoinRspLog
+        { gameid : GameId
+        , playerid : Maybe PlayerId
+        , gameState : String
+        }
+    | SetGameStateReqLog
+        { playerid : PlayerId
+        , gameState : String
+        }
+    | UpdateReqLog { playerid : PlayerId }
+    | UpdateRspLog
+        { gameid : String
+        , gameState : String
+        }
+      -- Game Play
+    | PlayReqLog
+        { playerid : PlayerId
+        , placement : Choice
+        }
+    | PlayRspLog
+        { gameid : GameId
+        , gameState : String
+        }
+    | AnotherGameRspLog
+        { playerid : PlayerId
+        , gameState : String
+        }
+    | GameOverRspLog
+        { gameid : GameId
+        , gameState : String
+        }
+      -- Public games
+    | PublicGamesReqLog
+        { subscribe : Bool
+        , forName : String
+        , gameid : Maybe GameId
+        }
+    | PublicGamesRspLog { games : List PublicGameAndPlayers }
+    | PublicGamesUpdateRspLog
+        { added : List PublicGameAndPlayers
+        , removed : List String
+        }
+    | StatisticsReqLog
+        { subscribe : Bool
+        }
+    | StatisticsRspLog
+        { statistics : Maybe Statistics
+        , startTime : Maybe Int
+        , updateTime : Maybe Int
+        }
+      -- Errors
+    | ErrorRspLog
+        { request : String
+        , text : String
+        }
+      -- Chat
+    | ChatReqLog
+        { playerid : String
+        , text : String
+        }
+    | ChatRspLog
+        { gameid : String
+        , name : String
+        , text : String
+        }
 
 
 type alias ServerState =

@@ -16,6 +16,7 @@ module SayUncle.EncodeDecode exposing
     , cardsToString
     , decodeSavedModel
     , encodeGameState
+    , encodeMessageForLog
     , encodeNamedGame
     , encodePublicGameAndPlayers
     , encodeSavedModel
@@ -25,6 +26,7 @@ module SayUncle.EncodeDecode exposing
     , messageDecoder
     , messageEncoder
     , messageEncoderWithPrivate
+    , messageToLogMessage
     , namedGameDecoder
     , publicGameAndPlayersDecoder
     , publicGameToFramework
@@ -55,6 +57,7 @@ import SayUncle.Types as Types
         , GameState
         , InitialBoard
         , Message(..)
+        , MessageForLog(..)
         , NamedGame
         , Page(..)
         , Player
@@ -1006,6 +1009,15 @@ publicTypeDecoder =
         ]
 
 
+encodeMessageForLog : Message -> ( ReqRsp, List ( String, String ) )
+encodeMessageForLog message =
+    let
+        ( reqRsp, plist ) =
+            messageEncoder message
+    in
+    ( reqRsp, List.map (\( k, v ) -> ( k, JE.encode 0 v )) plist )
+
+
 messageEncoder : Message -> ( ReqRsp, Plist )
 messageEncoder =
     messageEncoderInternal False
@@ -1567,6 +1579,114 @@ namedGameDecoder proxyServer =
         -- interfaceIsProxy
         |> hardcoded True
         |> hardcoded proxyServer
+
+
+messageToLogMessage : Message -> MessageForLog
+messageToLogMessage message =
+    let
+        gameStateString gameState =
+            JE.encode 0 (encodeGameState True gameState)
+    in
+    case message of
+        NewReq { name, publicType, maxPlayers, winningPoints, restoreState, maybeGameid } ->
+            NewReqLog
+                { name = name
+                , publicType = publicType
+                , maxPlayers = maxPlayers
+                , winningPoints = winningPoints
+                , restoreState =
+                    case restoreState of
+                        Nothing ->
+                            Nothing
+
+                        Just gameState ->
+                            Just <| gameStateString gameState
+                , maybeGameid = maybeGameid
+                }
+
+        NewRsp { gameid, playerid, player, name, publicType, gameState, wasRestored } ->
+            NewRspLog
+                { gameid = gameid
+                , playerid = playerid
+                , player = player
+                , name = name
+                , publicType = publicType
+                , gameState = gameStateString gameState
+                , wasRestored = wasRestored
+                }
+
+        JoinReq rec ->
+            JoinReqLog rec
+
+        ReJoinReq rec ->
+            RejoinReqLog rec
+
+        JoinRsp { gameid, playerid, gameState } ->
+            JoinRspLog
+                { gameid = gameid
+                , playerid = playerid
+                , gameState = gameStateString gameState
+                }
+
+        SetGameStateReq { playerid, gameState } ->
+            SetGameStateReqLog
+                { playerid = playerid
+                , gameState = gameStateString gameState
+                }
+
+        UpdateReq rec ->
+            UpdateReqLog rec
+
+        UpdateRsp { gameid, gameState } ->
+            UpdateRspLog
+                { gameid = gameid
+                , gameState = gameStateString gameState
+                }
+
+        PlayReq rec ->
+            PlayReqLog rec
+
+        PlayRsp { gameid, gameState } ->
+            PlayRspLog
+                { gameid = gameid
+                , gameState = gameStateString gameState
+                }
+
+        AnotherGameRsp { playerid, gameState } ->
+            AnotherGameRspLog
+                { playerid = playerid
+                , gameState = gameStateString gameState
+                }
+
+        GameOverRsp { gameid, gameState } ->
+            GameOverRspLog
+                { gameid = gameid
+                , gameState = gameStateString gameState
+                }
+
+        PublicGamesReq rec ->
+            PublicGamesReqLog rec
+
+        PublicGamesRsp rec ->
+            PublicGamesRspLog rec
+
+        PublicGamesUpdateRsp rec ->
+            PublicGamesUpdateRspLog rec
+
+        StatisticsReq rec ->
+            StatisticsReqLog rec
+
+        StatisticsRsp rec ->
+            StatisticsRspLog rec
+
+        ErrorRsp rec ->
+            ErrorRspLog rec
+
+        ChatReq rec ->
+            ChatReqLog rec
+
+        ChatRsp rec ->
+            ChatRspLog rec
 
 
 encodeWithTimestamp : ( Int, Value ) -> Value
