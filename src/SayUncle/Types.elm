@@ -361,7 +361,6 @@ type Message
     | JoinReq
         { gameid : GameId
         , name : String
-        , isRestore : Bool
         }
     | ReJoinReq
         { gameid : GameId
@@ -371,7 +370,6 @@ type Message
         { gameid : GameId
         , playerid : Maybe PlayerId
         , gameState : GameState
-        , wasRestored : Bool
         }
       -- Disallowed if SayUncle.WhichServer.allowGameState is False
     | SetGameStateReq
@@ -537,7 +535,6 @@ type MessageForLog
     | JoinReqLog
         { gameid : GameId
         , name : String
-        , isRestore : Bool
         }
     | RejoinReqLog
         { gameid : GameId
@@ -547,7 +544,6 @@ type MessageForLog
         { gameid : GameId
         , playerid : Maybe PlayerId
         , gameState : String
-        , wasRestored : Bool
         }
     | SetGameStateReqLog
         { playerid : PlayerId

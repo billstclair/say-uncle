@@ -1056,11 +1056,10 @@ messageEncoderInternal includePrivate message =
               ]
             )
 
-        JoinReq { gameid, name, isRestore } ->
+        JoinReq { gameid, name } ->
             ( Req "join"
             , [ ( "gameid", JE.string gameid )
               , ( "name", JE.string name )
-              , ( "isRestore", JE.bool isRestore )
               ]
             )
 
@@ -1071,12 +1070,11 @@ messageEncoderInternal includePrivate message =
               ]
             )
 
-        JoinRsp { gameid, playerid, gameState, wasRestored } ->
+        JoinRsp { gameid, playerid, gameState } ->
             ( Rsp "join"
             , [ ( "gameid", JE.string gameid )
               , ( "playerid", encodeMaybe JE.string playerid )
               , ( "gameState", encodeGameState includePrivate gameState )
-              , ( "wasRestored", JE.bool wasRestored )
               ]
             )
 
@@ -1221,16 +1219,14 @@ newReqDecoder =
 joinReqDecoder : Decoder Message
 joinReqDecoder =
     JD.succeed
-        (\gameid name isRestore ->
+        (\gameid name ->
             JoinReq
                 { gameid = gameid
                 , name = name
-                , isRestore = isRestore
                 }
         )
         |> required "gameid" JD.string
         |> required "name" JD.string
-        |> optional "isRestore" JD.bool False
 
 
 rejoinReqDecoder : Decoder Message
@@ -1322,18 +1318,16 @@ newRspDecoder =
 joinRspDecoder : Decoder Message
 joinRspDecoder =
     JD.succeed
-        (\gameid playerid gameState wasRestored ->
+        (\gameid playerid gameState ->
             JoinRsp
                 { gameid = gameid
                 , playerid = playerid
                 , gameState = gameState
-                , wasRestored = wasRestored
                 }
         )
         |> required "gameid" JD.string
         |> required "playerid" (JD.nullable JD.string)
         |> required "gameState" gameStateDecoder
-        |> optional "wasRestored" JD.bool False
 
 
 updateRspDecoder : Decoder Message
@@ -1627,12 +1621,11 @@ messageToLogMessage message =
         ReJoinReq rec ->
             RejoinReqLog rec
 
-        JoinRsp { gameid, playerid, gameState, wasRestored } ->
+        JoinRsp { gameid, playerid, gameState } ->
             JoinRspLog
                 { gameid = gameid
                 , playerid = playerid
                 , gameState = gameStateString gameState
-                , wasRestored = wasRestored
                 }
 
         SetGameStateReq { playerid, gameState } ->

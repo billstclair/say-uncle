@@ -384,7 +384,7 @@ generalMessageProcessorInternal isProxyServer state message =
                         }
                 )
 
-        JoinReq { gameid, name, isRestore } ->
+        JoinReq { gameid, name } ->
             case ServerInterface.getGame gameid state of
                 Nothing ->
                     errorRes message state "Unknown session id. Try again when a player has joined."
@@ -397,64 +397,20 @@ generalMessageProcessorInternal isProxyServer state message =
                         nextPlayer =
                             Dict.size players
                     in
-                    if name == "" || (List.member name <| Dict.values players) then
+                    if gameState.maxPlayers <= nextPlayer then
+                        errorRes message
+                            state
+                            "Game already has all players."
+
+                    else if name == "" || (List.member name <| Dict.values players) then
                         errorRes message
                             state
                             ("Blank or existing name: \"" ++ name ++ "\"")
-
-                    else if Dict.isEmpty players then
-                        let
-                            nameExists ids =
-                                case ids of
-                                    [] ->
-                                        False
-
-                                    id :: tail ->
-                                        case ServerInterface.getPlayer id state of
-                                            Nothing ->
-                                                -- Can't happen
-                                                nameExists tail
-
-                                            Just _ ->
-                                                False
-                        in
-                        if nameExists <| ServerInterface.getGamePlayers gameid state then
-                            errorRes message state <|
-                                "Already a player name: "
-                                    ++ name
-
-                        else
-                            let
-                                ( playerid, state2 ) =
-                                    ServerInterface.newPlayerid state
-
-                                participant =
-                                    0
-
-                                state3 =
-                                    ServerInterface.addPlayer playerid
-                                        { gameid = gameid
-                                        , player = participant
-                                        }
-                                        state2
-                            in
-                            ( state3
-                            , Just <|
-                                JoinRsp
-                                    { gameid = gameid
-                                    , playerid = Just playerid
-                                    , gameState = gameState
-                                    , wasRestored = isRestore
-                                    }
-                            )
 
                     else
                         let
                             players2 =
                                 Dict.insert nextPlayer name players
-
-                            playerCount =
-                                Dict.size players2
 
                             ( playerid, state2 ) =
                                 ServerInterface.newPlayerid state
@@ -479,21 +435,12 @@ generalMessageProcessorInternal isProxyServer state message =
                                     |> bumpStatistic .activeGames
 
                             removePublicGame =
-                                case
-                                    LE.find (\pg -> gameid == pg.gameid)
+                                if nextPlayer <= gameState.maxPlayers - 1 then
+                                    False
+
+                                else
+                                    List.any (\pg -> gameid == pg.gameid)
                                         state4.publicGames
-                                of
-                                    Nothing ->
-                                        False
-
-                                    Just pg ->
-                                        -- Remove only undecodable and non-private "public" games.
-                                        case ED.frameworkToPublicGame pg of
-                                            Nothing ->
-                                                True
-
-                                            Just { forName } ->
-                                                forName /= Nothing
 
                             state5 =
                                 if not removePublicGame then
@@ -513,7 +460,6 @@ generalMessageProcessorInternal isProxyServer state message =
                                 { gameid = gameid
                                 , playerid = Just playerid
                                 , gameState = gameState2
-                                , wasRestored = isRestore
                                 }
                         )
 
