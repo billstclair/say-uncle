@@ -44,7 +44,6 @@ module SayUncle.Types exposing
     , WinReason(..)
     , Winner(..)
     , darkStyle
-    , defaultGamename
     , emptyPlayerNames
     , emptyPrivateGameState
     , emptySettings
@@ -672,14 +671,8 @@ type alias ChatSettings msg =
     ElmChat.Settings msg
 
 
-defaultGamename : String
-defaultGamename =
-    "default"
-
-
 type alias NamedGame msg =
-    { gamename : String
-    , gameid : GameId
+    { gameid : GameId
     , gameState : GameState
     , isLocal : Bool
     , serverUrl : String

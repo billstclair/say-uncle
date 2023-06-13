@@ -1556,8 +1556,7 @@ messageDecoder ( reqrsp, plist ) =
 encodeNamedGame : NamedGame msg -> Value
 encodeNamedGame game =
     JE.object
-        [ ( "gamename", JE.string game.gamename )
-        , ( "gameid", JE.string game.gameid )
+        [ ( "gameid", JE.string game.gameid )
         , ( "gameState", encodeGameState True game.gameState )
         , ( "isLocal", JE.bool game.isLocal )
         , ( "serverUrl", JE.string game.serverUrl )
@@ -1571,7 +1570,6 @@ encodeNamedGame game =
 namedGameDecoder : ServerInterface msg -> Decoder (NamedGame msg)
 namedGameDecoder proxyServer =
     JD.succeed NamedGame
-        |> required "gamename" JD.string
         |> required "gameid" JD.string
         |> required "gameState" gameStateDecoder
         |> required "isLocal" JD.bool

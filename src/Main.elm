@@ -188,8 +188,7 @@ type ConnectionReason
 
 
 type alias ConnectionSpec =
-    { gamename : GameName
-    , connectionReason : ConnectionReason
+    { connectionReason : ConnectionReason
     }
 
 
@@ -218,8 +217,7 @@ type alias Model =
     { tick : Posix
     , zone : Zone
     , game : Game
-    , gameDict : Dict String Game
-    , chatDict : Dict String ChatSettings
+    , chatSettings : ChatSettings
     , connectionSpecQueue : Fifo ConnectionSpec
     , funnelState : State
     , key : Key
@@ -241,7 +239,6 @@ type alias Model =
     , showMessageQueue : Bool
 
     -- persistent below here
-    , gamename : String
     , page : Page
     , gameid : String
     , settings : Settings
@@ -263,10 +260,6 @@ isPlaying model =
     game.isLive && Dict.size gameState.players == gameState.maxPlayers
 
 
-type alias GameName =
-    String
-
-
 type Msg
     = Noop
     | Tick Posix
@@ -279,7 +272,6 @@ type Msg
     | SetForName String
     | SetServerUrl String
     | SetGameid String
-    | SetGameName GameName
     | SetPage Page
     | SetHideTitle Bool
     | NewGame
@@ -295,7 +287,7 @@ type Msg
     | MaybeClearStorage
     | ClearStorage
     | Click ( Int, Int )
-    | ChatUpdate String ChatSettings (Cmd Msg)
+    | ChatUpdate ChatSettings (Cmd Msg)
     | ChatSend String ChatSettings
     | ChatClear
     | PlaySound String
@@ -306,7 +298,7 @@ type Msg
     | HandleUrlRequest UrlRequest
     | HandleUrlChange Url
     | DoConnectedResponse
-    | RestoreSubscriptions String
+    | RestoreSubscriptions
     | Process Value
 
 
@@ -429,19 +421,18 @@ updateChatAttributes bsize styleType settings =
     }
 
 
-initialChatSettings : String -> Zone -> ChatSettings
-initialChatSettings gamename zone =
+initialChatSettings : Zone -> ChatSettings
+initialChatSettings zone =
     let
         settings =
-            ElmChat.makeSettings ids.chatOutput 14 True (ChatUpdate gamename)
+            ElmChat.makeSettings ids.chatOutput 14 True ChatUpdate
     in
     { settings | zone = zone }
 
 
 initialGame : Maybe Seed -> Game
 initialGame seed =
-    { gamename = Types.defaultGamename
-    , gameid = ""
+    { gameid = ""
     , gameState = Interface.emptyGameState Types.emptyPlayerNames
     , isLocal = False
     , serverUrl = WhichServer.serverUrl
@@ -507,10 +498,8 @@ init flags url key =
             { tick = zeroTick
             , zone = Time.utc
             , game = game
-            , gameDict = Dict.empty
-            , chatDict =
-                [ ( game.gamename, initialChatSettings game.gamename Time.utc ) ]
-                    |> Dict.fromList
+            , chatSettings =
+                initialChatSettings Time.utc
             , connectionSpecQueue = Fifo.empty
             , funnelState = initialFunnelState
             , key = key
@@ -532,7 +521,6 @@ init flags url key =
             , showMessageQueue = False
 
             -- persistent fields
-            , gamename = game.gamename
             , page = MainPage
             , gameid = ""
             , settings = Types.emptySettings
@@ -571,9 +559,9 @@ initialNewReqBody maxPlayers winningPoints =
     }
 
 
-initialNewReq : String -> Message
-initialNewReq gamename =
-    NewReq <| initialNewReqBody gamename
+initialNewReq : Message
+initialNewReq =
+    NewReq initialNewReqBody
 
 
 getViewport : Viewport -> Msg
@@ -676,168 +664,70 @@ handleGetResponse label key value model =
                 model |> withNoCmd
 
 
-foldrGames : (Game -> a -> a) -> a -> Model -> a
-foldrGames folder a model =
-    (( model.game.gamename, model.game )
-        :: Dict.toList model.gameDict
-    )
-        |> List.sortBy Tuple.first
-        |> List.map Tuple.second
-        |> List.foldr folder a
-
-
-updateAllGames : (Game -> Maybe Game) -> Model -> Model
-updateAllGames updater model =
+updateGame : (Game -> Game) -> Model -> ( Model, Maybe Game )
+updateGame updater model =
     let
-        model2 =
-            case updater model.game of
-                Nothing ->
-                    model
-
-                Just game2 ->
-                    { model | game = game2 }
-
-        ( dictChanged, gameDict ) =
-            let
-                folder name game ( changed, dict ) =
-                    case updater game of
-                        Nothing ->
-                            ( changed, dict )
-
-                        Just game2 ->
-                            ( True, Dict.insert name game2 dict )
-            in
-            Dict.foldl folder ( False, model.gameDict ) model.gameDict
+        game =
+            updater model.game
     in
-    if not dictChanged then
-        model2
-
-    else
-        { model2 | gameDict = gameDict }
-
-
-lookupGame : GameName -> Model -> Maybe Game
-lookupGame gamename model =
-    if gamename == model.game.gamename then
-        Just model.game
-
-    else
-        Dict.get gamename model.gameDict
-
-
-updateGame : String -> (Game -> Game) -> Model -> ( Model, Maybe Game )
-updateGame gamename updater model =
-    if gamename == model.game.gamename then
-        let
-            game =
-                updater model.game
-        in
-        ( { model | game = game }
-        , Just game
-        )
-
-    else
-        case Dict.get gamename model.gameDict of
-            Nothing ->
-                let
-                    name =
-                        Debug.log "updateGame, game not found" gamename
-                in
-                ( model, Nothing )
-
-            Just game ->
-                let
-                    game2 =
-                        updater game
-                in
-                ( { model
-                    | gameDict =
-                        Dict.insert gamename game2 model.gameDict
-                  }
-                , Just game2
-                )
+    ( { model | game = game }
+    , Just game
+    )
 
 
 handleGetGameResponse : String -> Value -> Model -> ( Model, Cmd Msg )
-handleGetGameResponse key value model =
-    case Debug.log "handleGetGameResponse, gamename" <| gameKeyToName key of
-        Nothing ->
+handleGetGameResponse _ value model =
+    let
+        foo =
+            Debug.log "handleGetGameResponse"
+    in
+    case
+        JD.decodeValue (ED.namedGameDecoder <| proxyServer (modelSeed model))
+            value
+    of
+        Err _ ->
             { model
-                | error = Just <| "Unrecognized session key: " ++ key
+                | error = Just <| "Couldn't decode game."
             }
                 |> withNoCmd
 
-        Just gamename ->
-            case
-                JD.decodeValue (ED.namedGameDecoder <| proxyServer (modelSeed model))
-                    value
-            of
-                Err _ ->
+        Ok game ->
+            let
+                model2 =
                     { model
-                        | error = Just <| "Couldn't decode session: " ++ gamename
+                        | game = game
                     }
-                        |> withNoCmd
 
-                Ok game ->
-                    if game.gamename /= gamename then
-                        { model
-                            | error =
-                                Just <|
-                                    "Bug: Loaded "
-                                        ++ gamename
-                                        ++ " from localStorage. Got "
-                                        ++ game.gamename
-                        }
-                            |> withNoCmd
+                model3 =
+                    -- Empty chat in case it's not in localStorage
+                    { model2
+                        | chatSettings =
+                            initialChatSettings model2.zone
+                    }
 
-                    else
-                        let
-                            model2 =
-                                if gamename == model.game.gamename then
-                                    { model | game = game }
+                getChatCmd =
+                    getChat
 
-                                else
-                                    { model
-                                        | gameDict =
-                                            Dict.insert gamename game model.gameDict
-                                    }
-
-                            model3 =
-                                -- Empty chat in case it's not in localStorage
-                                { model2
-                                    | chatDict =
-                                        Dict.insert gamename
-                                            (initialChatSettings gamename model2.zone)
-                                            model2.chatDict
-                                }
-
-                            getChatCmd =
-                                getChat gamename
-
-                            ( model4, cmd4 ) =
-                                reconnectToGame game model3
-                        in
-                        model4 |> withCmds [ getChatCmd, cmd4 ]
+                ( model4, cmd4 ) =
+                    reconnectToGame game model3
+            in
+            model4 |> withCmds [ getChatCmd, cmd4 ]
 
 
-maybeRestoreSubscriptions : String -> Model -> ( Model, Cmd Msg )
-maybeRestoreSubscriptions gamename model =
-    if model.game.gamename == gamename then
-        let
-            restoreSubscription connectionType =
-                model
-                    |> webSocketConnect
-                        model.game
-                        (ConnectionSpec gamename connectionType)
-        in
-        if model.page == PublicPage then
-            restoreSubscription PublicGamesConnection
+maybeRestoreSubscriptions : Model -> ( Model, Cmd Msg )
+maybeRestoreSubscriptions model =
+    let
+        restoreSubscription connectionType =
+            model
+                |> webSocketConnect
+                    model.game
+                    (ConnectionSpec connectionType)
+    in
+    if model.page == PublicPage then
+        restoreSubscription PublicGamesConnection
 
-        else if model.page == StatisticsPage then
-            restoreSubscription StatisticsConnection
-
-        else
-            model |> withNoCmd
+    else if model.page == StatisticsPage then
+        restoreSubscription StatisticsConnection
 
     else
         model |> withNoCmd
@@ -845,15 +735,11 @@ maybeRestoreSubscriptions gamename model =
 
 reconnectToGame : Game -> Model -> ( Model, Cmd Msg )
 reconnectToGame game model =
-    let
-        gamename =
-            game.gamename
-    in
     if not game.isLocal && game.isLive && game.playerid /= "" then
         model
             |> webSocketConnect
                 game
-                (ConnectionSpec gamename <| UpdateConnection game.playerid)
+                (ConnectionSpec <| UpdateConnection game.playerid)
 
     else if game.isLocal then
         model
@@ -861,86 +747,58 @@ reconnectToGame game model =
 
     else
         -- Need to set gameid to ""?
-        maybeRestoreSubscriptions game.gamename model
+        maybeRestoreSubscriptions model
 
 
-updateChat : String -> Model -> (ChatSettings -> ChatSettings) -> ( Model, Maybe ChatSettings )
-updateChat gamename model updater =
-    case Dict.get gamename model.chatDict of
-        Nothing ->
-            ( model, Nothing )
-
-        Just chat ->
-            let
-                chat2 =
-                    updater chat
-            in
-            ( { model
-                | chatDict =
-                    Dict.insert gamename chat2 model.chatDict
-              }
-            , Just chat2
-            )
+updateChat : Model -> (ChatSettings -> ChatSettings) -> ( Model, ChatSettings )
+updateChat model updater =
+    let
+        chat =
+            updater model.chatSettings
+    in
+    ( { model
+        | chatSettings = chat
+      }
+    , chat
+    )
 
 
-updateChat2 : String -> Model -> (ChatSettings -> ( ChatSettings, a )) -> ( Model, Maybe ( ChatSettings, a ) )
-updateChat2 gamename model updater =
-    case Dict.get gamename model.chatDict of
-        Nothing ->
-            ( model, Nothing )
-
-        Just chat ->
-            let
-                ( chat2, a ) =
-                    updater chat
-            in
-            ( { model
-                | chatDict =
-                    Dict.insert gamename chat2 model.chatDict
-              }
-            , Just ( chat2, a )
-            )
+updateChat2 : Model -> (ChatSettings -> ( ChatSettings, a )) -> ( Model, Maybe ( ChatSettings, a ) )
+updateChat2 model updater =
+    let
+        ( chat, a ) =
+            updater model.chatSettings
+    in
+    ( { model
+        | chatSettings = chat
+      }
+    , Just ( chat, a )
+    )
 
 
 handleGetChatResponse : String -> Value -> Model -> ( Model, Cmd Msg )
-handleGetChatResponse key value model =
-    case chatKeyToName key of
-        Nothing ->
+handleGetChatResponse _ value model =
+    case JD.decodeValue (ElmChat.settingsDecoder ChatUpdate) value of
+        Err _ ->
             { model
-                | error = Just <| "Unrecognized chat key: " ++ key
+                | error = Just <| "Couldn't decode chat."
             }
                 |> withNoCmd
 
-        Just gamename ->
-            case JD.decodeValue (ElmChat.settingsDecoder (ChatUpdate gamename)) value of
-                Err _ ->
-                    { model
-                        | error = Just <| "Couldn't decode chat: " ++ gamename
-                    }
-                        |> withNoCmd
-
-                Ok settings ->
-                    let
-                        ( model2, maybeChat ) =
-                            updateChat gamename
-                                model
-                                (\chat ->
-                                    { settings
-                                        | id = ids.chatOutput
-                                        , zone = chat.zone
-                                    }
-                                )
-                    in
-                    case maybeChat of
-                        Nothing ->
-                            { model2
-                                | error = Debug.log "" (Just <| "Unfound chat for session: " ++ gamename)
+        Ok settings ->
+            let
+                ( model2, chat2 ) =
+                    updateChat
+                        model
+                        (\chat ->
+                            { settings
+                                | id = ids.chatOutput
+                                , zone = chat.zone
                             }
-                                |> withNoCmd
-
-                        Just chat2 ->
-                            model2
-                                |> withCmd (ElmChat.restoreScroll chat2)
+                        )
+            in
+            model2
+                |> withCmd (ElmChat.restoreScroll chat2)
 
 
 initialNewReqCmd : Game -> Model -> Cmd Msg
@@ -948,7 +806,7 @@ initialNewReqCmd game model =
     send game.isLocal game.interface <|
         let
             req =
-                initialNewReqBody game.gamename
+                initialNewReqBody
         in
         NewReq
             { req
@@ -1051,23 +909,10 @@ incomingMessage interface message mdl =
         model =
             { mdl | reallyClearStorage = False }
 
-        ( ( isReviewing, isArchiving ), reviewingGame, reviewingIndex ) =
-            case model.showMove of
-                Nothing ->
-                    case model.showArchive of
-                        Nothing ->
-                            ( ( False, False ), Nothing, 0 )
-
-                        Just ( g, index ) ->
-                            ( ( False, True ), Just g, index )
-
-                Just ( g, index ) ->
-                    ( ( True, False ), Just g, index )
-
-        ( gameIsBeingReviewed, ( maybeGame, ( model2, cmd2 ) ) ) =
+        ( maybeGame, ( model2, cmd2 ) ) =
             case Types.messageToGameid message of
                 Nothing ->
-                    ( False, incomingMessageInternal interface Nothing message model )
+                    incomingMessageInternal interface Nothing message model
 
                 Just gameid ->
                     let
@@ -1078,48 +923,20 @@ incomingMessage interface message mdl =
 
                                 Just game ->
                                     Just { game | interface = interface }
-
-                        ( game3IsBeingReviewed, maybeGame3 ) =
-                            if not isReviewing && not isArchiving then
-                                ( False, maybeGame2 )
-
-                            else
-                                case maybeGame2 of
-                                    Nothing ->
-                                        ( False, Nothing )
-
-                                    Just game2 ->
-                                        if game2.gamename == model.game.gamename then
-                                            ( True, reviewingGame )
-
-                                        else
-                                            ( False, maybeGame2 )
                     in
-                    ( game3IsBeingReviewed
-                    , incomingMessageInternal interface maybeGame3 message model
-                    )
+                    incomingMessageInternal interface maybeGame2 message model
     in
     case maybeGame of
         Nothing ->
             model2 |> withCmd cmd2
 
         Just game ->
-            if gameIsBeingReviewed then
-                (if isReviewing then
-                    { model2 | showMove = Just ( game, reviewingIndex ) }
-
-                 else
-                    { model2 | showArchive = Just ( game, reviewingIndex ) }
-                )
-                    |> withCmds [ cmd2, putGame game ]
-
-            else
-                let
-                    ( model3, _ ) =
-                        updateGame game.gamename (always game) model2
-                in
-                model3
-                    |> withCmds [ cmd2, putGame game ]
+            let
+                ( model3, _ ) =
+                    updateGame game model2
+            in
+            model3
+                |> withCmds [ cmd2, putGame game ]
 
 
 {-| Do the work for `incomingMessage`.
@@ -1127,8 +944,6 @@ incomingMessage interface message mdl =
 If `maybeGame` is not not `Nothing`, then a game with its `gameid` was found.
 If the `Maybe Game` in the result is not `Nothing`, then the `Game` was changed,
 and needs to be persisted by `incomingMessage`. Otherwise, it was NOT changed.
-
-It is expected that the game's `gamename` is NOT changed. That can be done from the UI, but only `RenameGame` knows how to do what is necessary.
 
 -}
 incomingMessageInternal : ServerInterface -> Maybe Game -> Message -> Model -> ( Maybe Game, ( Model, Cmd Msg ) )
@@ -1149,7 +964,7 @@ incomingMessageInternal interface maybeGame message model =
                     )
     in
     case message of
-        NewRsp { gameid, playerid, player, name, gamename, gameState, wasRestored } ->
+        NewRsp { gameid, playerid, player, name, gameState, wasRestored } ->
             if maybeGame /= Nothing && not wasRestored then
                 case maybeGame of
                     Nothing ->
@@ -1159,10 +974,7 @@ incomingMessageInternal interface maybeGame message model =
                     Just game ->
                         let
                             returnedGame =
-                                if
-                                    (model.game.gamename == game.gamename)
-                                        && game.isLocal
-                                then
+                                if game.isLocal then
                                     -- Otherwise, there's no way out in the UI.
                                     Just { game | isLive = False }
 
@@ -1182,181 +994,116 @@ incomingMessageInternal interface maybeGame message model =
                         )
 
             else
-                case lookupGame gamename model of
-                    Nothing ->
-                        ( Nothing
-                        , { model
-                            | error =
-                                Just <| "Can't find session named \"" ++ gamename ++ "\""
-                          }
-                            |> withNoCmd
-                        )
+                let
+                    game =
+                        model.game
 
-                    Just game ->
-                        let
-                            ( model2, chatCmd ) =
-                                if not wasRestored then
-                                    clearChatSettings game.gamename True model
+                    ( model2, chatCmd ) =
+                        clearChatSettings True model
 
-                                else
-                                    model |> withNoCmd
+                    game2 =
+                        { game
+                            | gameid = gameid
+                            , gameState = gameState
+                            , player = player
+                            , playerid = playerid
+                            , isLive = True
+                            , yourWins = 0
+                            , interface = interface
+                        }
 
-                            game2 =
-                                { game
-                                    | gameid = gameid
-                                    , gameState = gameState
-                                    , player = player
-                                    , playerid = playerid
-                                    , isLive = True
-                                    , yourWins = 0
-                                    , interface = interface
-                                }
+                    model3 =
+                        { model2 | gameid = gameid }
+                in
+                ( Just game2
+                , model3
+                    |> withCmds
+                        [ chatCmd
+                        , if not game.isLocal then
+                            Cmd.none
 
-                            model3 =
-                                if game.gamename == model.game.gamename then
-                                    { model2 | gameid = gameid }
+                          else if player == WhitePlayer then
+                            send game2.isLocal interface <|
+                                JoinReq
+                                    { gameid = gameid
+                                    , name = "Black"
+                                    , isRestore = False
+                                    , inCrowd = False
+                                    }
 
-                                else
-                                    model2
-                        in
-                        ( Just game2
-                        , model3
-                            |> withCmds
-                                [ chatCmd
-                                , if not game.isLocal then
-                                    Cmd.none
+                          else
+                            send game2.isLocal interface <|
+                                JoinReq
+                                    { gameid = gameid
+                                    , name = "White"
+                                    , isRestore = False
+                                    , inCrowd = False
+                                    }
+                        ]
+                )
 
-                                  else if player == WhitePlayer then
-                                    send game2.isLocal interface <|
-                                        JoinReq
-                                            { gameid = gameid
-                                            , name = "Black"
-                                            , isRestore = False
-                                            , inCrowd = False
-                                            }
+        JoinRsp { gameid, playerid, gameState } ->
+            let
+                game =
+                    model.game
 
-                                  else
-                                    send game2.isLocal interface <|
-                                        JoinReq
-                                            { gameid = gameid
-                                            , name = "White"
-                                            , isRestore = False
-                                            , inCrowd = False
-                                            }
-                                ]
-                        )
+                ( model2, chatCmd ) =
+                    if not wasRestored then
+                        clearChatSettings True model
 
-        JoinRsp { gameid, playerid, participant, gameState, wasRestored } ->
-            case maybeGame of
-                Nothing ->
-                    ( Nothing
-                    , { model
-                        | error =
-                            Just <| "JoinRsp found no session for id: " ++ gameid
-                      }
-                        |> withNoCmd
-                    )
+                    else
+                        model |> withNoCmd
 
-                Just game ->
-                    let
-                        ( model2, chatCmd ) =
-                            if not wasRestored then
-                                clearChatSettings game.gamename True model
+                newPlayer =
+                    if playerid == Nothing then
+                        game.player
 
-                            else
-                                model |> withNoCmd
+                    else
+                        player
 
-                        ( watcherName, player, error ) =
-                            case participant of
-                                PlayingParticipant p ->
-                                    ( game.watcherName, p, Nothing )
+                game2 =
+                    { game
+                        | gameid = gameid
+                        , gameState = gameState
+                        , isLive = True
+                        , player = newPlayer
+                        , yourWins = 0
+                        , interface = interface
+                    }
 
-                                CrowdParticipant name ->
-                                    let
-                                        forGame =
-                                            if game.gamename == model.game.gamename then
-                                                ""
-
-                                            else
-                                                " for hidden session "
-                                                    ++ game.gamename
-                                    in
-                                    ( case playerid of
-                                        Nothing ->
-                                            game.watcherName
-
-                                        _ ->
-                                            Just name
-                                    , WhitePlayer
-                                    , if playerid /= Nothing then
-                                        Nothing
-
-                                      else
-                                        Just <|
-                                            ("New spectator: " ++ name)
-                                                ++ (forGame ++ ".")
-                                    )
-
-                        newPlayer =
-                            if playerid == Nothing then
-                                game.player
-
-                            else
-                                player
-
-                        game2 =
-                            { game
-                                | gameid = gameid
-                                , gameState = gameState
-                                , isLive = True
-                                , player = newPlayer
-                                , watcherName = watcherName
-                                , yourWins = 0
-                                , interface = interface
-                            }
-
-                        game3 =
-                            if game2.isLocal then
-                                { game2
-                                    | otherPlayerid =
-                                        case playerid of
-                                            Just p ->
-                                                p
-
-                                            Nothing ->
-                                                ""
-                                }
-
-                            else
+                game3 =
+                    if game2.isLocal then
+                        { game2
+                            | otherPlayerid =
                                 case playerid of
+                                    Just p ->
+                                        p
+
                                     Nothing ->
-                                        game2
+                                        ""
+                        }
 
-                                    Just pid ->
-                                        { game2 | playerid = pid }
+                    else
+                        case playerid of
+                            Nothing ->
+                                game2
 
-                        ( model3, _ ) =
-                            updateGame game3.gamename (always game3) model2
+                            Just pid ->
+                                { game2 | playerid = pid }
 
-                        msg =
-                            if
-                                (game3.gamename == model.game.gamename)
-                                    && (watcherName == Nothing)
-                            then
-                                "The game is on!"
+                ( model3, _ ) =
+                    updateGame game3 model2
 
-                            else
-                                playerName player game3
-                                    ++ " joined hidden session "
-                                    ++ game3.gamename
-                    in
-                    ( Just game3
-                    , { model3 | error = error }
-                        |> withCmds
-                            [ chatCmd
-                            , maybeSendNotification game3 False msg model2
-                            ]
-                    )
+                msg =
+                    "The game is on!"
+            in
+            ( Just game3
+            , { model3 | error = error }
+                |> withCmds
+                    [ chatCmd
+                    , maybeSendNotification game3 False msg model2
+                    ]
+            )
 
         LeaveRsp { gameid, participant } ->
             let
@@ -1449,8 +1196,8 @@ incomingMessageInternal interface maybeGame message model =
                     ( Just { game | gameState = gameState }
                     , model
                         |> withCmd
-                            (Task.perform RestoreSubscriptions <|
-                                Task.succeed game.gamename
+                            (Task.perform identity <|
+                                Task.succeed RestoreSubscriptions
                             )
                     )
                 )
@@ -1649,7 +1396,7 @@ incomingMessageInternal interface maybeGame message model =
                             ( Nothing
                             , webSocketConnect
                                 game
-                                (ConnectionSpec game.gamename <|
+                                (ConnectionSpec <|
                                     RestoreGameConnection game
                                 )
                                 model
@@ -1674,7 +1421,7 @@ incomingMessageInternal interface maybeGame message model =
                                             ( Nothing
                                             , webSocketConnect
                                                 restoredGame
-                                                (ConnectionSpec restoredGame.gamename <|
+                                                (ConnectionSpec <|
                                                     JoinRestoredGameConnection gameid
                                                 )
                                                 model
@@ -1703,8 +1450,8 @@ incomingMessageInternal interface maybeGame message model =
             withRequiredGame gameid
                 (\game ->
                     let
-                        ( model2, maybeTuple ) =
-                            updateChat2 game.gamename
+                        ( model2, ( _, cmd ) ) =
+                            updateChat2
                                 model
                                 (\chat ->
                                     ElmChat.addLineSpec chat <|
@@ -1717,20 +1464,18 @@ incomingMessageInternal interface maybeGame message model =
                     , case maybeTuple of
                         Nothing ->
                             model2 |> withNoCmd
+                    , model2
+                        |> withCmds
+                            [ cmd
 
-                        Just ( _, cmd ) ->
-                            model2
-                                |> withCmds
-                                    [ cmd
-
-                                    -- Kluge. ElmChat is supposed to do this
-                                    , Task.attempt (\_ -> Noop) <|
-                                        Dom.setViewportOf ids.chatOutput 0 1000000
-                                    , maybeSendNotification game
-                                        True
-                                        ("You got an AGOG chat message from " ++ name)
-                                        model
-                                    ]
+                            -- Kluge. ElmChat is supposed to do this
+                            , Task.attempt (\_ -> Noop) <|
+                                Dom.setViewportOf ids.chatOutput 0 1000000
+                            , maybeSendNotification game
+                                True
+                                ("You got a SayUncle chat message from " ++ name)
+                                model
+                            ]
                     )
                 )
 
@@ -1910,13 +1655,13 @@ socketHandler response state mdl =
                     else
                         Just <| "Connection unexpectedly closed: " ++ reason
             }
-                |> updateAllGames
+                |> updateGame
                     (\g ->
                         if g.isLocal then
-                            Nothing
+                            g
 
                         else
-                            Just { g | isLive = False }
+                            { g | isLive = False }
                     )
                 |> withNoCmd
 
@@ -1945,17 +1690,8 @@ connectedResponse model =
                 Nothing ->
                     Cmd.none
 
-                Just { gamename, connectionReason } ->
-                    case lookupGame gamename model of
-                        Nothing ->
-                            let
-                                mcs =
-                                    Debug.log "connectedResponse: can't find gamename" maybeConnectionSpec
-                            in
-                            Cmd.none
-
-                        Just game ->
-                            processConnectionReason game connectionReason model2
+                Just { connectionReason } ->
+                    processConnectionReason model.game connectionReason model2
             ]
 
 
@@ -1989,7 +1725,6 @@ processConnectionReason game connectionReason model =
 
                                 forName ->
                                     PublicFor forName
-                    , gamename = game.gamename
                     , restoreState = Nothing
                     , maybeGameid = Nothing
                     }
@@ -2046,7 +1781,6 @@ processConnectionReason game connectionReason model =
                                 { name = name
                                 , player = player
                                 , publicType = NotPublic
-                                , gamename = localGame.gamename
                                 , restoreState = Just localGame.gameState
                                 , maybeGameid = Just localGame.gameid
                                 }
@@ -2444,185 +2178,6 @@ updateInternal msg model =
             { model | gameid = gameid }
                 |> withNoCmd
 
-        SetGameName gamename ->
-            { model | gamename = gamename }
-                |> withNoCmd
-
-        ReviewMoves index ->
-            setMoveIndex index
-                { model | page = MainPage }
-
-        SetMoveIndex index ->
-            setMoveIndex index model
-
-        SetArchiveIndex indexStr ->
-            case String.toInt indexStr of
-                Nothing ->
-                    -- Can't happen
-                    model |> withNoCmd
-
-                Just index ->
-                    setArchiveIndex index model
-
-        SwitchGame gamename ->
-            let
-                mdl =
-                    { model | error = Nothing }
-            in
-            if gamename == game.gamename then
-                mdl |> withNoCmd
-
-            else if gamename == "" then
-                -- New Game
-                let
-                    newGamename =
-                        mdl.gamename
-
-                    newChat =
-                        initialChatSettings newGamename mdl.zone
-
-                    newGame =
-                        let
-                            agame =
-                                initialGame Nothing
-                        in
-                        { agame | gamename = newGamename }
-                in
-                case lookupGame newGamename mdl of
-                    Just _ ->
-                        mdl |> withNoCmd
-
-                    Nothing ->
-                        { mdl
-                            | game = newGame
-                            , gameid = newGame.gameid
-                            , gameDict =
-                                Dict.insert game.gamename game model.gameDict
-                            , chatDict =
-                                Dict.insert newGamename newChat model.chatDict
-                            , showArchive = Nothing
-                            , showMove = Nothing
-                        }
-                            |> withCmds
-                                [ putGame newGame
-                                , putChat newGamename newChat
-                                ]
-
-            else
-                case Dict.get gamename model.gameDict of
-                    Nothing ->
-                        { mdl
-                            | error =
-                                Just <| "Bug: can't find session named " ++ gamename
-                        }
-                            |> withNoCmd
-
-                    Just newGame ->
-                        { mdl
-                            | gamename = gamename
-                            , game = newGame
-                            , gameid = newGame.gameid
-                            , gameDict =
-                                Dict.remove gamename model.gameDict
-                                    |> Dict.insert model.game.gamename model.game
-                            , showArchive = Nothing
-                            , showMove = Nothing
-                        }
-                            |> withNoCmd
-
-        RenameGame ->
-            let
-                newGamename =
-                    model.gamename
-
-                oldGamename =
-                    game.gamename
-
-                chatDict =
-                    model.chatDict
-
-                gameDict =
-                    model.gameDict
-
-                chat =
-                    case Dict.get oldGamename chatDict of
-                        Just achat ->
-                            achat
-
-                        Nothing ->
-                            initialChatSettings newGamename model.zone
-            in
-            if newGamename == "" then
-                -- Delete game
-                if not game.isLocal && game.isLive then
-                    model |> withNoCmd
-
-                else
-                    case List.head <| Dict.toList gameDict of
-                        Nothing ->
-                            model |> withNoCmd
-
-                        Just ( nextName, nextGame ) ->
-                            { model
-                                | gamename = nextName
-                                , game = nextGame
-                                , gameid = nextGame.gameid
-                                , gameDict = Dict.remove nextName gameDict
-                                , chatDict = Dict.remove oldGamename chatDict
-                                , showArchive = Nothing
-                                , showMove = Nothing
-                            }
-                                |> withCmds
-                                    [ put (gameKey oldGamename) Nothing
-                                    , put (chatKey oldGamename) Nothing
-                                    ]
-
-            else if Nothing /= lookupGame model.gamename model then
-                model |> withNoCmd
-
-            else
-                let
-                    g =
-                        { game | gamename = newGamename }
-
-                    ( savedGame, renamedGame, ( showArchive, showMove ) ) =
-                        case model.showMove of
-                            Nothing ->
-                                case model.showArchive of
-                                    Nothing ->
-                                        ( g, g, ( Nothing, Nothing ) )
-
-                                    Just ( archivedGame, index ) ->
-                                        let
-                                            ag =
-                                                { archivedGame
-                                                    | gamename = newGamename
-                                                }
-                                        in
-                                        ( ag, g, ( Nothing, Just ( ag, index ) ) )
-
-                            Just ( movedGame, index ) ->
-                                let
-                                    mg =
-                                        { movedGame | gamename = newGamename }
-                                in
-                                ( mg, g, ( Just ( mg, index ), model.showArchive ) )
-                in
-                { model
-                    | game = renamedGame
-                    , chatDict =
-                        Dict.remove oldGamename chatDict
-                            |> Dict.insert newGamename chat
-                    , showArchive = showArchive
-                    , showMove = showMove
-                }
-                    |> withCmds
-                        [ put (gameKey oldGamename) Nothing
-                        , putGame savedGame
-                        , put (chatKey oldGamename) Nothing
-                        , putChat newGamename chat
-                        ]
-
         SetPage page ->
             let
                 mdl =
@@ -2632,13 +2187,13 @@ updateInternal msg model =
                     if page == PublicPage then
                         webSocketConnect
                             model.game
-                            (ConnectionSpec mdl.gamename PublicGamesConnection)
+                            (ConnectionSpec PublicGamesConnection)
                             mdl
 
                     else if page == StatisticsPage then
                         webSocketConnect
                             model.game
-                            (ConnectionSpec mdl.gamename StatisticsConnection)
+                            (ConnectionSpec StatisticsConnection)
                             mdl
 
                     else
@@ -2657,12 +2212,11 @@ updateInternal msg model =
                             StatisticsReq { subscribe = False }
 
                     else if page == MainPage then
-                        case Dict.get game.gamename model.chatDict of
-                            Nothing ->
-                                Cmd.none
-
-                            Just chat ->
-                                ElmChat.restoreScroll chat
+                        let
+                            chat =
+                                model.chatSettings
+                        in
+                        ElmChat.restoreScroll chat
 
                     else
                         Cmd.none
@@ -2750,18 +2304,6 @@ updateInternal msg model =
 
         JoinGame gameid ->
             join { model | gameid = gameid } False
-
-        JoinGameAsWatcher gameid ->
-            case gameFromId gameid model of
-                Nothing ->
-                    join { model | gameid = gameid } True
-
-                Just agame ->
-                    model
-                        |> withCmds
-                            [ Task.perform SwitchGame <| Task.succeed agame.gamename
-                            , setPage MainPage
-                            ]
 
         Disconnect ->
             if showingArchiveOrMove model then
@@ -3009,16 +2551,16 @@ updateInternal msg model =
                         )
                     )
 
-        ChatUpdate gamename chatSettings cmd ->
-            updateChat gamename model (always chatSettings)
+        ChatUpdate chatSettings cmd ->
+            updateChat model (always chatSettings)
                 |> Tuple.first
-                |> withCmds [ cmd, putChat gamename chatSettings ]
+                |> withCmds [ cmd, putChat chatSettings ]
 
         ChatSend line chatSettings ->
             chatSend line chatSettings model
 
         ChatClear ->
-            clearChatSettings game.gamename False model
+            clearChatSettings False model
 
         PlaySound file ->
             if not model.soundEnabled then
@@ -3033,13 +2575,12 @@ updateInternal msg model =
 
         SetZone zone ->
             let
-                mapper _ chat =
-                    { chat | zone = zone }
+                chat =
+                    model.chatSettings
             in
             { model
                 | zone = zone
-                , chatDict =
-                    Dict.map mapper model.chatDict
+                , chatSettings = { chat | zone = zone }
             }
                 |> withNoCmd
 
@@ -3068,8 +2609,8 @@ updateInternal msg model =
         DoConnectedResponse ->
             connectedResponse model
 
-        RestoreSubscriptions gamename ->
-            maybeRestoreSubscriptions gamename model
+        RestoreSubscriptions ->
+            maybeRestoreSubscriptions model
 
         Process value ->
             case
@@ -3284,30 +2825,25 @@ setTestMode isTestMode model =
             |> withCmds [ cmd, putGame game2 ]
 
 
-clearChatSettings : String -> Bool -> Model -> ( Model, Cmd Msg )
-clearChatSettings gamename clearInput model =
+clearChatSettings : Bool -> Model -> ( Model, Cmd Msg )
+clearChatSettings clearInput model =
     let
-        ( model2, maybeChat ) =
-            updateChat (Debug.log "Clear chat for game" gamename)
+        ( model2, chat ) =
+            updateChat
                 model
-                (\chat ->
-                    { chat
+                (\chat2 ->
+                    { chat2
                         | lines = []
                         , input =
                             if clearInput then
                                 ""
 
                             else
-                                chat.input
+                                chat2.input
                     }
                 )
     in
-    case maybeChat of
-        Nothing ->
-            model2 |> withNoCmd
-
-        Just chat ->
-            model2 |> withCmd (putChat gamename chat)
+    model2 |> withCmd (putChat chat)
 
 
 chatSend : String -> ChatSettings -> Model -> ( Model, Cmd Msg )
@@ -3320,7 +2856,7 @@ chatSendInternal : String -> ChatSettings -> Model -> ( Model, Cmd Msg )
 chatSendInternal line chatSettings model =
     let
         ( model2, _ ) =
-            updateChat model.game.gamename model (always chatSettings)
+            updateChat model (always chatSettings)
     in
     model2
         |> withCmd
@@ -3362,7 +2898,7 @@ webSocketConnect game spec model =
                     , isLive = True
                 }
         in
-        updateGame game.gamename (always game) model
+        updateGame game model
             |> Tuple.first
             |> withNoCmd
 
@@ -3380,7 +2916,7 @@ webSocketConnect game spec model =
                     , interfaceIsProxy = False
                 }
         in
-        updateGame game.gamename (always newGame) model
+        updateGame newGame model
             |> Tuple.first
             |> insertConnectionSpec (Debug.log "webSocketConnect" spec)
             |> withCmd
@@ -3392,7 +2928,7 @@ webSocketConnect game spec model =
 startGame : Model -> ( Model, Cmd Msg )
 startGame model =
     webSocketConnect model.game
-        (ConnectionSpec model.game.gamename StartGameConnection)
+        (ConnectionSpec StartGameConnection)
         model
 
 
@@ -3414,7 +2950,7 @@ join model inCrowd =
 
         ( model3, cmd3 ) =
             webSocketConnect model2.game
-                (ConnectionSpec model.game.gamename <|
+                (ConnectionSpec <|
                     JoinGameConnection gameid inCrowd
                 )
                 model2
@@ -4351,31 +3887,25 @@ mainPage bsize model =
                         br
 
                       else
-                        case Dict.get model.game.gamename model.chatDict of
-                            Nothing ->
-                                text ""
-
-                            Just chat ->
-                                let
-                                    chatSettings =
-                                        chat
-                                            |> updateChatAttributes bsize model.styleType
-                                in
-                                span []
-                                    [ br
-                                    , ElmChat.styledInputBox [ id ids.chatInput ]
-                                        []
-                                        --width in chars
-                                        30
-                                        --id
-                                        "Send"
-                                        ChatSend
-                                        chatSettings
-                                    , text " "
-                                    , button [ onClick ChatClear ]
-                                        [ text "Clear" ]
-                                    , ElmChat.chat chatSettings
-                                    ]
+                        let
+                            chatSettings =
+                                model.chatSettings
+                        in
+                        span []
+                            [ br
+                            , ElmChat.styledInputBox [ id ids.chatInput ]
+                                []
+                                --width in chars
+                                30
+                                --id
+                                "Send"
+                                ChatSend
+                                chatSettings
+                            , text " "
+                            , button [ onClick ChatClear ]
+                                [ text "Clear" ]
+                            , ElmChat.chat chatSettings
+                            ]
                     , b "White: "
                     , text <|
                         case white of
@@ -4635,305 +4165,92 @@ mainPage bsize model =
                         else
                             "New Game"
                     ]
-            , br
-            , b "Session name: "
-            , input
-                [ onInput SetGameName
-                , value model.gamename
-                , size 20
-                ]
-                []
-            , text " "
-            , let
-                delete =
-                    model.gamename == ""
-
-                cantDelete =
-                    delete
-                        && model.game.isLive
-                        && not model.game.isLocal
-
-                onlyGame =
-                    delete && Dict.isEmpty model.gameDict
-
-                isCurrent =
-                    model.gamename == liveGame.gamename
-
-                exists =
-                    Nothing /= lookupGame model.gamename model
-              in
-              button
-                [ disabled <| isCurrent || cantDelete || onlyGame || exists
-                , title <|
-                    if isCurrent then
-                        "Rename to the same name? Nope."
-
-                    else if cantDelete then
-                        "You may not delete an active network session."
-
-                    else if onlyGame then
-                        "You may not delete the only session."
-
-                    else if delete then
-                        "Delete the current session."
-
-                    else if exists then
-                        "You may not rename to an existing name."
-
-                    else
-                        "Rename the current session."
-                , onClick RenameGame
-                ]
-                [ text <|
-                    if delete then
-                        "Delete"
-
-                    else
-                        "Rename"
-                ]
-            , text " "
-            , select
-                [ onInput SwitchGame ]
-              <|
-                let
-                    cantMakeNew =
-                        (model.gamename == "")
-                            || (Nothing /= lookupGame model.gamename model)
-                in
-                option
-                    [ value ""
-                    , disabled cantMakeNew
-                    , title <|
-                        if cantMakeNew then
-                            "Type a non-blank \"Session name\" that does not yet exist."
-
-                        else
-                            "Make a new sesion named \"" ++ model.gamename ++ "\""
-                    ]
-                    [ text <| toMdashes "-- New Session --" ]
-                    :: foldrGames
-                        (\agame res ->
-                            let
-                                isCurrent =
-                                    agame.gamename == game.gamename
-                            in
-                            option
-                                [ value agame.gamename
-                                , selected isCurrent
-                                , title <|
-                                    if isCurrent then
-                                        "This is the current session."
-
-                                    else
-                                        "Switch to this session."
-                                ]
-                                [ text agame.gamename ]
-                                :: res
-                        )
-                        []
-                        model
-            , if isReviewingOrArchiving || not (game.isLocal || WhichServer.isLocal) || inCrowd then
-                text ""
-
-              else
-                div [ align "center" ]
-                    [ b "Test Mode: "
-                    , input
-                        [ type_ "checkbox"
-                        , checked <| gameState.testMode /= Nothing
-                        , onCheck SetTestMode
-                        ]
-                        []
-                    , case gameState.testMode of
-                        Nothing ->
-                            text ""
-
-                        Just testMode ->
-                            let
-                                testPiece =
-                                    testMode.piece
-
-                                pieceString =
-                                    ED.pieceToString testPiece
-                                        |> String.toUpper
-
-                                testColor =
-                                    testPiece.color
-
-                                testClear =
-                                    testMode.clear
-                            in
-                            div [ align "center" ]
-                                [ button [ onClick EraseBoard ]
-                                    [ text "Erase Board!" ]
-                                , text " "
-                                , button [ onClick RevertBoard ]
-                                    [ text "Revert" ]
-                                , text " "
-                                , button [ onClick InitialBoard ]
-                                    [ text "Initial Setup" ]
-                                , br
-                                , b "Remove clicked: "
-                                , input
-                                    [ type_ "checkbox"
-                                    , checked <| testMode.clear
-                                    , onCheck SetTestClear
-                                    ]
-                                    []
-                                , if testMode.clear then
-                                    text ""
-
-                                  else
-                                    span []
-                                        [ br
-                                        , b "Test piece: "
-                                        , select [ onInput SetTestPieceType ]
-                                            [ option
-                                                [ value "G"
-                                                , selected <| pieceString == "G"
-                                                ]
-                                                [ text "Golem" ]
-                                            , option
-                                                [ value "H"
-                                                , selected <| pieceString == "H"
-                                                ]
-                                                [ text "Hulk" ]
-                                            , option
-                                                [ value "C"
-                                                , selected <| pieceString == "C"
-                                                ]
-                                                [ text "Corrupted Hulk" ]
-                                            , option
-                                                [ value "J"
-                                                , selected <| pieceString == "J"
-                                                ]
-                                                [ text "Journeyman" ]
-                                            ]
-                                        , text " "
-                                        , radio "testColor"
-                                            "white"
-                                            (testColor == WhiteColor)
-                                            False
-                                            (SetTestColor WhiteColor)
-                                        , text " "
-                                        , radio "testColor"
-                                            "black"
-                                            (testColor == BlackColor)
-                                            False
-                                            (SetTestColor BlackColor)
-                                        ]
-                                ]
-                    ]
-            , if isReviewingOrArchiving && not isArchiving then
-                text ""
-
-              else if isArchiving then
-                div [ align "center" ]
-                    [ b "Archives: "
-                    , archiveSelector model
-                    ]
-
-              else if game.isLocal then
-                if game.archives == [] then
-                    text ""
-
-                else
+            , div [ align "center" ]
+                [ if game.isLive then
                     div [ align "center" ]
-                        [ b "Archives: "
+                        [ b "Session ID: "
+                        , text model.gameid
+                        , br
+                        , b "Archives: "
                         , archiveSelector model
                         , br
                         , button
                             [ onClick Disconnect ]
-                            [ text "Clear Archive" ]
+                            [ text "Disconnect" ]
                         ]
 
-              else
-                div [ align "center" ]
-                    [ if game.isLive then
-                        div [ align "center" ]
-                            [ b "Session ID: "
-                            , text model.gameid
-                            , br
-                            , b "Archives: "
-                            , archiveSelector model
-                            , br
-                            , button
-                                [ onClick Disconnect ]
-                                [ text "Disconnect" ]
+                  else
+                    div [ align "center" ]
+                        [ b "Your Name: "
+                        , input
+                            [ onInput SetName
+                            , value settings.name
+                            , size 20
                             ]
+                            []
+                        , br
 
-                      else
-                        div [ align "center" ]
-                            [ b "Your Name: "
-                            , input
-                                [ onInput SetName
-                                , value settings.name
-                                , size 20
-                                ]
-                                []
-                            , br
+                        {-
+                           , b "Server: "
+                           , input
+                               [ onInput SetServerUrl
+                               , value model.serverUrl
+                               , size 40
+                               , disabled True
+                               ]
+                               []
+                           , text " "
+                        -}
+                        , b "Public: "
+                        , input
+                            [ type_ "checkbox"
+                            , checked settings.isPublic
+                            , onCheck SetIsPublic
+                            ]
+                            []
+                        , if not settings.isPublic then
+                            text ""
 
-                            {-
-                               , b "Server: "
-                               , input
-                                   [ onInput SetServerUrl
-                                   , value model.serverUrl
-                                   , size 40
-                                   , disabled True
-                                   ]
-                                   []
-                               , text " "
-                            -}
-                            , b "Public: "
-                            , input
-                                [ type_ "checkbox"
-                                , checked settings.isPublic
-                                , onCheck SetIsPublic
-                                ]
-                                []
-                            , if not settings.isPublic then
-                                text ""
-
-                              else
-                                span []
-                                    [ b " for name: "
-                                    , input
-                                        [ onInput SetForName
-                                        , value settings.forName
-                                        , size 20
-                                        , id ids.forName
-                                        ]
-                                        []
+                          else
+                            span []
+                                [ b " for name: "
+                                , input
+                                    [ onInput SetForName
+                                    , value settings.forName
+                                    , size 20
+                                    , id ids.forName
                                     ]
-                            , text " "
-                            , button
-                                [ onClick StartGame
-                                , disabled <| settings.name == ""
+                                    []
                                 ]
-                                [ text "Start Session" ]
-                            , br
-                            , b "Session ID: "
-                            , input
-                                [ onInput SetGameid
-                                , value model.gameid
-                                , size 16
-                                , onEnter Join
-                                ]
-                                []
-                            , text " "
-                            , button
-                                [ onClick Join
-                                , disabled <|
-                                    (settings.name == "")
-                                        || (model.gameid == "")
-                                ]
-                                [ text "Join"
-                                ]
-                            , br
-                            , b "Archives: "
-                            , archiveSelector model
+                        , text " "
+                        , button
+                            [ onClick StartGame
+                            , disabled <| settings.name == ""
                             ]
-                    ]
+                            [ text "Start Session" ]
+                        , br
+                        , b "Session ID: "
+                        , input
+                            [ onInput SetGameid
+                            , value model.gameid
+                            , size 16
+                            , onEnter Join
+                            ]
+                            []
+                        , text " "
+                        , button
+                            [ onClick Join
+                            , disabled <|
+                                (settings.name == "")
+                                    || (model.gameid == "")
+                            ]
+                            [ text "Join"
+                            ]
+                        , br
+                        , b "Archives: "
+                        , archiveSelector model
+                        ]
+                ]
             ]
         , p []
             [ if model.showMessageQueue then
@@ -5333,27 +4650,18 @@ publicPage bsize model =
                                     , th "Last Move"
                                     ]
                               ]
-                            , List.map
-                                (renderInplayPublicGameRow model.tick
-                                    model.zone
-                                    (sessionGameIds model)
-                                    game.isLive
-                                    name
-                                    model
-                                )
-                                inplay
+                            , renderInplayPublicGameRow model.tick
+                                model.zone
+                                model.gameid
+                                game.isLive
+                                name
+                                model
                             ]
                     ]
             , playButton
             , footerParagraph
             ]
         ]
-
-
-sessionGameIds : Model -> List GameId
-sessionGameIds model =
-    Dict.values model.gameDict
-        |> List.map .gameid
 
 
 discriminatePublicGames : List PublicGameAndPlayers -> ( List PublicGameAndPlayers, List PublicGameAndPlayers )
@@ -6296,26 +5604,26 @@ putModel model =
     put pk.model <| Just value
 
 
-putChat : String -> ChatSettings -> Cmd Msg
-putChat gamename settings =
+putChat : ChatSettings -> Cmd Msg
+putChat settings =
     (Just <| ElmChat.settingsEncoder settings)
-        |> put (chatKey gamename)
+        |> put pk.chat
 
 
-getChat : String -> Cmd Msg
-getChat gamename =
-    getLabeled pk.chat (chatKey gamename)
+getChat : Cmd Msg
+getChat =
+    getLabeled pk.chat pk.chat
 
 
 putGame : Game -> Cmd Msg
 putGame game =
     (Just <| ED.encodeNamedGame game)
-        |> put (gameKey game.gamename)
+        |> put pk.game
 
 
-getGame : String -> Cmd Msg
-getGame gamename =
-    getLabeled pk.game (gameKey gamename)
+getGame : Cmd Msg
+getGame =
+    getLabeled pk.game pk.game
 
 
 put : String -> Maybe Value -> Cmd Msg
@@ -6353,7 +5661,7 @@ clearStorage =
 
 localStoragePrefix : String
 localStoragePrefix =
-    "AGOG"
+    "SayUncle"
 
 
 initialFunnelState : PortFunnels.State
@@ -6398,49 +5706,3 @@ pk =
     , chat = "chat"
     , game = "game"
     }
-
-
-gamePrefix : String
-gamePrefix =
-    pk.game ++ "."
-
-
-gameKey : String -> String
-gameKey gamename =
-    gamePrefix ++ gamename
-
-
-gameKeyToName : String -> Maybe String
-gameKeyToName key =
-    let
-        len =
-            String.length gamePrefix
-    in
-    if String.left len key /= gamePrefix then
-        Nothing
-
-    else
-        Just <| String.dropLeft len key
-
-
-chatPrefix : String
-chatPrefix =
-    pk.chat ++ "."
-
-
-chatKey : String -> String
-chatKey gamename =
-    chatPrefix ++ gamename
-
-
-chatKeyToName : String -> Maybe String
-chatKeyToName key =
-    let
-        len =
-            String.length chatPrefix
-    in
-    if String.left len key /= chatPrefix then
-        Nothing
-
-    else
-        Just <| String.dropLeft len key
