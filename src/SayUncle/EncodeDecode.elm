@@ -1561,7 +1561,6 @@ encodeNamedGame game =
         , ( "gameState", encodeGameState True game.gameState )
         , ( "isLocal", JE.bool game.isLocal )
         , ( "serverUrl", JE.string game.serverUrl )
-        , ( "otherPlayerid", JE.string game.otherPlayerid )
         , ( "player", encodePlayer game.player )
         , ( "playerid", JE.string game.playerid )
         , ( "isLive", JE.bool game.isLive )
@@ -1577,7 +1576,6 @@ namedGameDecoder proxyServer =
         |> required "gameState" gameStateDecoder
         |> required "isLocal" JD.bool
         |> required "serverUrl" JD.string
-        |> required "otherPlayerid" JD.string
         |> required "player" playerDecoder
         |> required "playerid" JD.string
         |> required "isLive" JD.bool

@@ -683,7 +683,6 @@ type alias NamedGame msg =
     , gameState : GameState
     , isLocal : Bool
     , serverUrl : String
-    , otherPlayerid : PlayerId
     , player : Player
     , playerid : PlayerId
     , isLive : Bool

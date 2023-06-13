@@ -257,10 +257,10 @@ isPlaying model =
         game =
             model.game
 
-        { white, black } =
-            game.gameState.players
+        gameState =
+            game.gameState
     in
-    game.isLive && white /= "" && black /= ""
+    game.isLive && Dict.size gameState.players == gameState.maxPlayers
 
 
 type alias GameName =
@@ -445,7 +445,6 @@ initialGame seed =
     , gameState = Interface.emptyGameState Types.emptyPlayerNames
     , isLocal = False
     , serverUrl = WhichServer.serverUrl
-    , otherPlayerid = ""
     , player = 0
     , playerid = ""
     , isLive = False
@@ -552,20 +551,21 @@ init flags url key =
 
 type alias NewReqBody =
     { name : String
-    , player : Player
     , publicType : PublicType
-    , gamename : String
+    , maxPlayers : Int
+    , winningPoints : Int
+    , seed : Seed
     , restoreState : Maybe GameState
     , maybeGameid : Maybe GameId
     }
 
 
-initialNewReqBody : String -> NewReqBody
-initialNewReqBody gamename =
+initialNewReqBody : Int -> Int -> NewReqBody
+initialNewReqBody maxPlayers winningPoints =
     { name = ""
-    , player = 0
     , publicType = NotPublic
-    , gamename = gamename
+    , maxPlayers = maxPlayers
+    , winningPoints = winningPoints
     , restoreState = Nothing
     , maybeGameid = Nothing
     }
@@ -959,19 +959,13 @@ initialNewReqCmd game model =
 
 modelToSavedModel : Model -> SavedModel
 modelToSavedModel model =
-    { gamename = model.gamename
-    , gameGamename = model.game.gamename
-    , page = model.page
+    { page = model.page
     , chooseFirst = model.chooseFirst
-    , lastTestMode = model.lastTestMode
     , gameid = model.gameid
     , settings = model.settings
     , styleType = model.styleType
-    , rotate = model.rotate
     , notificationsEnabled = model.notificationsEnabled
     , soundEnabled = model.soundEnabled
-    , requestUndoMessage = model.requestUndoMessage
-    , denyUndoMessage = model.denyUndoMessage
     }
 
 
@@ -982,47 +976,34 @@ savedModelToModel savedModel model =
             model.game
     in
     { model
-        | gamename = savedModel.gamename
-        , game = { game | gamename = savedModel.gameGamename }
-        , page = savedModel.page
+        | page = savedModel.page
         , chooseFirst = savedModel.chooseFirst
         , lastTestMode = savedModel.lastTestMode
         , gameid = savedModel.gameid
         , settings = savedModel.settings
         , styleType = savedModel.styleType
-        , rotate = savedModel.rotate
         , notificationsEnabled = savedModel.notificationsEnabled
         , soundEnabled = savedModel.soundEnabled
-        , requestUndoMessage = savedModel.requestUndoMessage
-        , denyUndoMessage = savedModel.denyUndoMessage
     }
 
 
-playerName : Player -> Game -> String
+playerName : Player -> Game -> Maybe String
 playerName player game =
-    let
-        players =
-            game.gameState.players
-    in
-    case player of
-        WhitePlayer ->
-            players.white
-
-        BlackPlayer ->
-            players.black
+    Dict.get player game.gameState.players
 
 
 localizedPlayerName : Player -> Game -> String
 localizedPlayerName player game =
-    let
-        name =
-            playerName player game
-    in
-    if name == "" || game.isLocal || player /= game.player || game.watcherName /= Nothing then
-        name
+    case playerName player game of
+        Nothing ->
+            ""
 
-    else
-        "You (" ++ name ++ ")"
+        Just name ->
+            if name == "" || game.isLocal || player /= game.player then
+                name
+
+            else
+                "You (" ++ name ++ ")"
 
 
 findGame : (Game -> Bool) -> Model -> Maybe Game
@@ -1394,7 +1375,6 @@ incomingMessageInternal interface maybeGame message model =
                             { game
                                 | gameid = ""
                                 , playerid = ""
-                                , otherPlayerid = ""
                             }
 
                         model2 =
@@ -1433,7 +1413,6 @@ incomingMessageInternal interface maybeGame message model =
                                 ( { game
                                     | gameid = ""
                                     , playerid = ""
-                                    , otherPlayerid = ""
                                     , isLive = False
                                     , watcherName = Nothing
                                   }
@@ -1711,7 +1690,6 @@ incomingMessageInternal interface maybeGame message model =
                                 { game
                                     | gameid = ""
                                     , playerid = ""
-                                    , otherPlayerid = ""
                                     , isLive = False
                                     , watcherName = Nothing
                                 }
@@ -2346,7 +2324,6 @@ updateInternal msg model =
                             | isLocal = isLocal
                             , isLive = False
                             , playerid = ""
-                            , otherPlayerid = ""
                             , watcherName = Nothing
                             , interface = interface
                             , interfaceIsProxy = isLocal
