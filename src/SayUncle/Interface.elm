@@ -1005,6 +1005,31 @@ playReq isProxyServer state message playerid placement gameid gameState player =
                                 }
                         )
 
+            ChooseStart ->
+                if player /= 0 then
+                    errorRes message state "Only the first player can start the game."
+
+                else
+                    let
+                        size =
+                            Dict.size gameState.players
+                    in
+                    if gameState.maxPlayers <= size then
+                        errorRes message state "Game already started."
+
+                    else
+                        let
+                            newGameState =
+                                { gameState | maxPlayers = size }
+                        in
+                        ( ServerInterface.updateGame gameid newGameState state
+                        , Just <|
+                            PlayRsp
+                                { gameid = gameid
+                                , gameState = newGameState
+                                }
+                        )
+
 
 publicGameAddPlayers : Types.ServerState -> PublicGame -> PublicGameAndPlayers
 publicGameAddPlayers state publicGame =

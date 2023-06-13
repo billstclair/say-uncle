@@ -860,6 +860,9 @@ encodeChoice choice =
         ChooseNew ->
             JE.string "ChooseNew"
 
+        ChooseStart ->
+            JE.string "ChooseStart"
+
         ChooseTableau card ->
             JE.object [ ( "ChooseTableau", encodeCard card ) ]
 
@@ -888,6 +891,9 @@ choiceDecoder =
                     case s of
                         "ChooseNew" ->
                             JD.succeed ChooseNew
+
+                        "ChooseStart" ->
+                            JD.succeed ChooseStart
 
                         "TurnStock" ->
                             JD.succeed TurnStock
