@@ -1017,6 +1017,9 @@ playReq isProxyServer state message playerid placement gameid gameState player =
                     if gameState.maxPlayers <= size then
                         errorRes message state "Game already started."
 
+                    else if size <= 1 then
+                        errorRes message state "Can't start game with only one player."
+
                     else
                         let
                             newGameState =

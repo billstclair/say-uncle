@@ -330,14 +330,14 @@ updateResponseGameState updater message =
 
 
 type Choice
-    = ChooseNew
-    | ChooseStart
-    | ChooseTableau Card
-    | TurnStock
-    | ChooseStock
-    | SkipStock
-    | Discard Card
-    | SayUncle
+    = ChooseNew --new game
+    | ChooseStart --start game before maxPlayers have joined
+    | ChooseTableau Card --choose a tableau card
+    | TurnStock --turn the top stock card
+    | ChooseStock --choose the turned stock card
+    | SkipStock --skip the turned stock card
+    | Discard Card --discard after ChooseStock
+    | SayUncle --say "Uncle"
 
 
 type Message
