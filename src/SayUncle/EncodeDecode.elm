@@ -1117,6 +1117,19 @@ messageEncoderInternal includePrivate message =
               ]
             )
 
+        LeaveReq { playerid } ->
+            ( Req "leave"
+            , [ ( "playerid", JE.string playerid )
+              ]
+            )
+
+        LeaveRsp { gameid, participant } ->
+            ( Rsp "leave"
+            , [ ( "gameid", JE.string gameid )
+              , ( "participant", JE.int participant )
+              ]
+            )
+
         AnotherGameRsp { gameid, playerid, gameState } ->
             ( Rsp "anotherGame"
             , [ ( "gameid", JE.string gameid )
@@ -1285,6 +1298,17 @@ playReqDecoder =
         |> required "placement" choiceDecoder
 
 
+leaveReqDecoder : Decoder Message
+leaveReqDecoder =
+    JD.succeed
+        (\playerid ->
+            LeaveReq
+                { playerid = playerid
+                }
+        )
+        |> required "playerid" JD.string
+
+
 chatReqDecoder : Decoder Message
 chatReqDecoder =
     JD.succeed
@@ -1360,6 +1384,19 @@ playRspDecoder =
         )
         |> required "gameid" JD.string
         |> required "gameState" gameStateDecoder
+
+
+leaveRspDecoder : Decoder Message
+leaveRspDecoder =
+    JD.succeed
+        (\gameid participant ->
+            LeaveRsp
+                { gameid = gameid
+                , participant = participant
+                }
+        )
+        |> required "gameid" JD.string
+        |> required "participant" JD.int
 
 
 anotherGameRspDecoder : Decoder Message
@@ -1502,6 +1539,9 @@ messageDecoder ( reqrsp, plist ) =
                 "play" ->
                     decodePlist playReqDecoder plist
 
+                "leave" ->
+                    decodePlist leaveReqDecoder plist
+
                 "publicGames" ->
                     decodePlist publicGamesReqDecoder plist
 
@@ -1527,6 +1567,9 @@ messageDecoder ( reqrsp, plist ) =
 
                 "play" ->
                     decodePlist playRspDecoder plist
+
+                "leave" ->
+                    decodePlist leaveRspDecoder plist
 
                 "anotherGame" ->
                     decodePlist anotherGameRspDecoder plist
@@ -1657,6 +1700,12 @@ messageToLogMessage message =
                 { gameid = gameid
                 , gameState = gameStateString gameState
                 }
+
+        LeaveReq rec ->
+            LeaveReqLog rec
+
+        LeaveRsp rec ->
+            LeaveRspLog rec
 
         AnotherGameRsp { playerid, gameState } ->
             AnotherGameRspLog

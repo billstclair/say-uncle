@@ -390,6 +390,11 @@ type Message
         { gameid : GameId
         , gameState : GameState
         }
+    | LeaveReq { playerid : PlayerId }
+    | LeaveRsp
+        { gameid : GameId
+        , participant : Participant
+        }
     | AnotherGameRsp
         { gameid : GameId
         , playerid : PlayerId
@@ -562,6 +567,13 @@ type MessageForLog
     | PlayRspLog
         { gameid : GameId
         , gameState : String
+        }
+    | LeaveReqLog
+        { playerid : PlayerId
+        }
+    | LeaveRspLog
+        { gameid : GameId
+        , participant : Participant
         }
     | AnotherGameRspLog
         { playerid : PlayerId

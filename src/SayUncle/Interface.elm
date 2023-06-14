@@ -521,6 +521,10 @@ generalMessageProcessorInternal isProxyServer state message =
                         gameState
                         participant
 
+        LeaveReq { playerid } ->
+            -- TODO
+            errorRes message state "LeaveReq not yet implemented."
+
         PublicGamesReq { subscribe, forName, gameid } ->
             -- subscribe is processed by the server code only
             let
