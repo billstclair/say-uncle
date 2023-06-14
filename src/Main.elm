@@ -106,8 +106,8 @@ import SayUncle.Types as Types
         , Message(..)
         , NamedGame
         , Page(..)
-        , Participant(..)
-        , Player(..)
+        , Participant
+        , Player
         , PlayerNames
         , PublicGame
         , PublicGameAndPlayers
@@ -217,6 +217,7 @@ type alias Model =
     { tick : Posix
     , zone : Zone
     , game : Game
+    , gameDict : Dict String Game
     , chatSettings : ChatSettings
     , connectionSpecQueue : Fifo ConnectionSpec
     , funnelState : State
@@ -433,6 +434,7 @@ initialChatSettings zone =
 initialGame : Maybe Seed -> Game
 initialGame seed =
     { gameid = ""
+    , playerIds = Dict.empty
     , gameState = Interface.emptyGameState Types.emptyPlayerNames
     , isLocal = False
     , serverUrl = WhichServer.serverUrl
@@ -498,6 +500,7 @@ init flags url key =
             { tick = zeroTick
             , zone = Time.utc
             , game = game
+            , gameDict = Dict.empty
             , chatSettings =
                 initialChatSettings Time.utc
             , connectionSpecQueue = Fifo.empty
@@ -1027,8 +1030,6 @@ incomingMessageInternal interface maybeGame message model =
                                 JoinReq
                                     { gameid = gameid
                                     , name = "Black"
-                                    , isRestore = False
-                                    , inCrowd = False
                                     }
 
                           else
@@ -1036,8 +1037,6 @@ incomingMessageInternal interface maybeGame message model =
                                 JoinReq
                                     { gameid = gameid
                                     , name = "White"
-                                    , isRestore = False
-                                    , inCrowd = False
                                     }
                         ]
                 )
