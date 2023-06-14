@@ -867,42 +867,6 @@ localizedPlayerName player game =
                 "You (" ++ name ++ ")"
 
 
-findGame : (Game -> Bool) -> Model -> Maybe Game
-findGame predicate model =
-    if predicate model.game then
-        Just model.game
-
-    else
-        case
-            DE.find (\_ game -> predicate game) model.gameDict
-        of
-            Nothing ->
-                Nothing
-
-            Just ( _, game ) ->
-                Just game
-
-
-gameFromPlayerId : PlayerId -> Model -> Maybe Game
-gameFromPlayerId playerid model =
-    findGame (.playerid >> (==) playerid) model
-
-
-gameFromId : GameId -> Model -> Maybe Game
-gameFromId gameid model =
-    findGame (.gameid >> (==) gameid) model
-
-
-withGameFromId : String -> Model -> (Game -> ( Model, Cmd Msg )) -> ( Model, Cmd Msg )
-withGameFromId gameid model thunk =
-    case gameFromId gameid model of
-        Nothing ->
-            model |> withNoCmd
-
-        Just game ->
-            thunk game
-
-
 incomingMessage : ServerInterface -> Message -> Model -> ( Model, Cmd Msg )
 incomingMessage interface message mdl =
     let
@@ -920,12 +884,15 @@ incomingMessage interface message mdl =
                 Just gameid ->
                     let
                         maybeGame2 =
-                            case gameFromId gameid model of
-                                Nothing ->
-                                    Nothing
+                            if gameid == model.gameid then
+                                Nothing
 
-                                Just game ->
-                                    Just { game | interface = interface }
+                            else
+                                let
+                                    game =
+                                        model.game
+                                in
+                                Just { game | interface = interface }
                     in
                     incomingMessageInternal interface maybeGame2 message model
     in
@@ -990,7 +957,6 @@ incomingMessageInternal interface maybeGame message model =
                                 -- This is actually remotely possible, if the
                                 -- remote server happens to randomly generate a
                                 -- gameid that matches a local one (or vice-versa).
-                                -- TODO: make isLocal an arg to gameFromId
                                 Just <| "Bug: NewRsp found existing session id: " ++ gameid
                           }
                             |> withNoCmd
@@ -1381,25 +1347,24 @@ incomingMessageInternal interface maybeGame message model =
                 Ok (UpdateReq { playerid }) ->
                     -- Server has forgotten the game.
                     -- Restore it.
-                    case gameFromPlayerId playerid model of
-                        Nothing ->
-                            ( Nothing
-                            , { model
-                                | error =
-                                    Just "Bug: Can't restore session."
-                              }
-                                |> withNoCmd
-                            )
+                    if model.playerId == "" then
+                        ( Nothing
+                        , { model
+                            | error =
+                                Just "Bug: Can't restore session."
+                          }
+                            |> withNoCmd
+                        )
 
-                        Just game ->
-                            ( Nothing
-                            , webSocketConnect
-                                game
-                                (ConnectionSpec <|
-                                    RestoreGameConnection game
-                                )
-                                model
+                    else
+                        ( Nothing
+                        , webSocketConnect
+                            model.game
+                            (ConnectionSpec <|
+                                RestoreGameConnection game
                             )
+                            model
+                        )
 
                 Ok (NewReq { maybeGameid }) ->
                     case maybeGameid of
@@ -1407,40 +1372,42 @@ incomingMessageInternal interface maybeGame message model =
                             errorReturn ()
 
                         Just gameid ->
-                            case gameFromId gameid model of
-                                Nothing ->
-                                    errorReturn ()
+                            if gameid /= model.gameid then
+                                errorReturn ()
 
-                                Just restoredGame ->
-                                    case playerName restoredGame.player restoredGame of
-                                        "" ->
-                                            errorReturn ()
+                            else
+                                let
+                                    restoredGame =
+                                        model.game
+                                in
+                                case playerName restoredGame.player restoredGame of
+                                    "" ->
+                                        errorReturn ()
 
-                                        _ ->
-                                            ( Nothing
-                                            , webSocketConnect
-                                                restoredGame
-                                                (ConnectionSpec <|
-                                                    JoinRestoredGameConnection gameid
-                                                )
-                                                model
+                                    _ ->
+                                        ( Nothing
+                                        , webSocketConnect
+                                            restoredGame
+                                            (ConnectionSpec <|
+                                                JoinRestoredGameConnection gameid
                                             )
+                                            model
+                                        )
 
                 Ok (LeaveReq { playerid }) ->
-                    case gameFromPlayerId playerid model of
-                        Nothing ->
-                            errorReturn ()
-
-                        Just game ->
-                            ( Just
-                                { game
-                                    | gameid = ""
-                                    , playerid = ""
-                                    , isLive = False
-                                    , watcherName = Nothing
-                                }
-                            , model |> withNoCmd
-                            )
+                    let
+                        game =
+                            model.game
+                    in
+                    ( Just
+                        { game
+                            | gameid = ""
+                            , playerid = ""
+                            , isLive = False
+                            , watcherName = Nothing
+                        }
+                    , model |> withNoCmd
+                    )
 
                 _ ->
                     errorReturn ()
@@ -1629,20 +1596,23 @@ socketHandler response state mdl =
                         |> withNoCmd
 
                 Ok message ->
-                    case findGame (.isLocal >> not) model of
-                        Nothing ->
-                            { model
-                                | error =
-                                    Just "Bug: Can't find a non-local session for an incoming message."
-                            }
-                                |> withNoCmd
+                    if game.isLocal then
+                        { model
+                            | error =
+                                Just "Got a WebSocket message for a local game."
+                        }
+                            |> withNoCmd
 
-                        Just game ->
-                            { model | error = Nothing }
-                                |> withCmd
-                                    (Task.perform (IncomingMessage False game.interface) <|
-                                        Task.succeed message
-                                    )
+                    else
+                        let
+                            game =
+                                model.game
+                        in
+                        { model | error = Nothing }
+                            |> withCmd
+                                (Task.perform (IncomingMessage False game.interface) <|
+                                    Task.succeed message
+                                )
 
         ClosedResponse { expected, reason } ->
             { model
@@ -1787,30 +1757,24 @@ processConnectionReason game connectionReason model =
         JoinRestoredGameConnection gameid ->
             -- Errors are generated in ErrorRsp handler,
             -- before it generates the Cmd that gets here.
-            case gameFromId gameid model of
-                Nothing ->
-                    Cmd.none
+            if gameid /= model.game.gameid then
+                Cmd.none
 
-                Just localGame ->
-                    let
-                        ( name, inCrowd ) =
-                            case game.watcherName of
-                                Nothing ->
-                                    ( playerName localGame.player localGame, False )
-
-                                Just n ->
-                                    ( n, True )
-                    in
-                    if name == "" then
+            else
+                let
+                    localGame =
+                        model.game
+                in
+                case playerName localGame.player localGame of
+                    Nothing ->
                         Cmd.none
 
-                    else
+                    Just name ->
                         send isLocal interface <|
                             JoinReq
                                 { gameid = gameid
                                 , name = name
                                 , isRestore = True
-                                , inCrowd = inCrowd
                                 }
 
 
@@ -4693,23 +4657,22 @@ renderInplayPublicGameRow tick zone gameids connected name model { publicGame, p
             style "text-align" "center"
 
         ( dontLink, ( whiteText, blackText, watcherText ) ) =
-            case gameFromId gameid model of
-                Nothing ->
-                    ( connected || name == "" || name == white || name == black
-                    , ( text, text, text )
-                    )
+            if gameid /= model.gameid then
+                ( connected || name == "" || name == white || name == black
+                , ( text, text, text )
+                )
 
-                Just game ->
-                    if game.watcherName /= Nothing then
-                        ( False, ( text, text, b ) )
+            else
+                let
+                    game =
+                        model.game
+                in
+                case game.player of
+                    WhitePlayer ->
+                        ( False, ( b, text, text ) )
 
-                    else
-                        case game.player of
-                            WhitePlayer ->
-                                ( False, ( b, text, text ) )
-
-                            BlackPlayer ->
-                                ( False, ( text, b, text ) )
+                    BlackPlayer ->
+                        ( False, ( text, b, text ) )
     in
     tr []
         [ td [ center ]
@@ -4760,12 +4723,7 @@ renderPublicGameRow name connected model { publicGame } =
             publicGame
 
         isMyGame =
-            case gameFromId gameid model of
-                Nothing ->
-                    False
-
-                Just _ ->
-                    True
+            gameid == model.gameid
 
         center =
             style "text-align" "center"

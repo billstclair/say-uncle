@@ -674,6 +674,7 @@ type alias ChatSettings msg =
 type alias NamedGame msg =
     { gameid : GameId
     , playerIds : Dict PlayerId Player --used in local mode
+    , playerWins : Dict PlayerId Int --used in local mode
     , gameState : GameState
     , isLocal : Bool
     , serverUrl : String

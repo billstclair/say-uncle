@@ -1558,6 +1558,7 @@ encodeNamedGame game =
     JE.object
         [ ( "gameid", JE.string game.gameid )
         , ( "playerIds", JE.dict identity JE.int game.playerIds )
+        , ( "playerWins", JE.dict identity JE.int game.playerIds )
         , ( "gameState", encodeGameState True game.gameState )
         , ( "isLocal", JE.bool game.isLocal )
         , ( "serverUrl", JE.string game.serverUrl )
@@ -1573,6 +1574,7 @@ namedGameDecoder proxyServer =
     JD.succeed NamedGame
         |> required "gameid" JD.string
         |> required "playerIds" (JD.dict JD.int)
+        |> required "playerWins" (JD.dict JD.int)
         |> required "gameState" gameStateDecoder
         |> required "isLocal" JD.bool
         |> required "serverUrl" JD.string
