@@ -432,6 +432,18 @@ updateChatAttributes bsize styleType settings =
     }
 
 
+
+-- TODO
+-- Use UI.ids
+
+
+ids =
+    { chatOutput = "chatOutput"
+    , chatInput = "chatInput"
+    , forName = "forName"
+    }
+
+
 initialChatSettings : Zone -> ChatSettings
 initialChatSettings zone =
     let
@@ -2005,14 +2017,6 @@ updateInternal msg model =
             recordMessage interfaceIsLocal isSend message model
                 |> withNoCmd
 
-        SetChooseFirst player ->
-            { model | chooseFirst = player }
-                |> withNoCmd
-
-        SetRotate rotate ->
-            { model | rotate = rotate }
-                |> withNoCmd
-
         SetIsLocal isLocal ->
             if game.isLocal == isLocal || showingArchiveOrMove model then
                 model |> withNoCmd
@@ -2059,59 +2063,6 @@ updateInternal msg model =
                           else
                             Cmd.none
                         ]
-
-        SetRequestUndoMessage message ->
-            { model
-                | requestUndoMessage = message
-                , denyUndoMessage = ""
-            }
-                |> withNoCmd
-
-        SetDenyUndoMessage message ->
-            { model
-                | denyUndoMessage = message
-                , requestUndoMessage = ""
-            }
-                |> withNoCmd
-
-        SendRequestUndo ->
-            { model
-                | requestUndoMessage = ""
-                , denyUndoMessage = ""
-            }
-                |> withCmd
-                    (send game.isLocal game.interface <|
-                        PlayReq
-                            { playerid = game.playerid
-                            , placement = ChooseRequestUndo model.requestUndoMessage
-                            }
-                    )
-
-        SendAcceptUndo ->
-            { model
-                | requestUndoMessage = ""
-                , denyUndoMessage = ""
-            }
-                |> withCmd
-                    (send game.isLocal game.interface <|
-                        PlayReq
-                            { playerid = game.playerid
-                            , placement = ChooseAcceptUndo
-                            }
-                    )
-
-        SendDenyUndo ->
-            { model
-                | denyUndoMessage = ""
-                , requestUndoMessage = ""
-            }
-                |> withCmd
-                    (send game.isLocal game.interface <|
-                        PlayReq
-                            { playerid = game.playerid
-                            , placement = ChooseDenyUndo model.denyUndoMessage
-                            }
-                    )
 
         SetDarkMode darkMode ->
             let
@@ -2285,9 +2236,6 @@ updateInternal msg model =
             else
                 disconnect model
 
-        SetTestMode isTestMode ->
-            setTestMode isTestMode model
-
         SetNotificationsEnabled enabled ->
             if not enabled then
                 { model | notificationsEnabled = False }
@@ -2322,43 +2270,6 @@ updateInternal msg model =
             { model | soundEnabled = bool }
                 |> withNoCmd
 
-        EraseBoard ->
-            let
-                game2 =
-                    { game
-                        | gameState =
-                            { gameState
-                                | newBoard = Board.empty
-                                , selected = Nothing
-                                , legalMoves = NoMoves
-                            }
-                    }
-            in
-            { model | game = game2 }
-                |> withCmd (putGame game2)
-
-        RevertBoard ->
-            case gameState.testModeInitialState of
-                Nothing ->
-                    model |> withNoCmd
-
-                Just { board, moves, whoseTurn, selected, legalMoves } ->
-                    let
-                        game2 =
-                            { game
-                                | gameState =
-                                    { gameState
-                                        | newBoard = board
-                                        , moves = moves
-                                        , whoseTurn = whoseTurn
-                                        , selected = selected
-                                        , legalMoves = legalMoves
-                                    }
-                            }
-                    in
-                    { model | game = game2 }
-                        |> withCmd (putGame game2)
-
         InitialBoard ->
             let
                 game2 =
@@ -2375,80 +2286,6 @@ updateInternal msg model =
             in
             { model | game = game2 }
                 |> withCmd (putGame game2)
-
-        SetTestClear testClear ->
-            case gameState.testMode of
-                Nothing ->
-                    model |> withNoCmd
-
-                Just testMode ->
-                    { model
-                        | game =
-                            { game
-                                | gameState =
-                                    { gameState
-                                        | testMode =
-                                            Just { testMode | clear = testClear }
-                                    }
-                            }
-                    }
-                        |> withNoCmd
-
-        SetTestColor color ->
-            case gameState.testMode of
-                Nothing ->
-                    model |> withNoCmd
-
-                Just testMode ->
-                    let
-                        testPiece =
-                            testMode.piece
-                    in
-                    { model
-                        | game =
-                            { game
-                                | gameState =
-                                    { gameState
-                                        | testMode =
-                                            Just
-                                                { testMode
-                                                    | piece =
-                                                        { testPiece | color = color }
-                                                }
-                                    }
-                            }
-                    }
-                        |> withNoCmd
-
-        SetTestPieceType pieceString ->
-            let
-                { pieceType } =
-                    ED.stringToPiece pieceString
-            in
-            case gameState.testMode of
-                Nothing ->
-                    model |> withNoCmd
-
-                Just testMode ->
-                    let
-                        testPiece =
-                            testMode.piece
-                    in
-                    { model
-                        | game =
-                            { game
-                                | gameState =
-                                    { gameState
-                                        | testMode =
-                                            Just
-                                                { testMode
-                                                    | piece =
-                                                        { testPiece | pieceType = pieceType }
-                                                }
-                                    }
-                            }
-                    }
-                        |> withNoCmd
 
         Reload ->
             model |> withCmd Navigation.reloadAndSkipCache
@@ -2555,203 +2392,6 @@ updateInternal msg model =
 
                 Ok res ->
                     res
-
-
-setMoveIndex : Int -> Model -> ( Model, Cmd Msg )
-setMoveIndex newIdx model =
-    let
-        ( game, index ) =
-            case model.showMove of
-                Nothing ->
-                    ( model.game, 0 )
-
-                Just ( g, i ) ->
-                    ( g, i )
-
-        gameState =
-            game.gameState
-
-        newIndex =
-            max 0 <| min newIdx <| List.length gameState.moves
-    in
-    if newIndex == index then
-        model |> withNoCmd
-
-    else if newIndex == 0 then
-        { model
-            | game = game
-            , showMove = Nothing
-        }
-            |> withNoCmd
-
-    else
-        let
-            moves =
-                List.drop newIndex gameState.moves
-
-            newGameState =
-                Interface.unarchiveGame
-                    { moves = moves
-                    , players = gameState.players
-                    , winner = NoWinner
-                    , initialBoard = gameState.initialBoard
-                    }
-                    gameState
-
-            newGame =
-                { game | gameState = newGameState }
-        in
-        { model
-            | game = newGame
-            , showMove =
-                Just ( game, newIndex )
-        }
-            |> withNoCmd
-
-
-setArchiveIndex : Int -> Model -> ( Model, Cmd Msg )
-setArchiveIndex index model =
-    let
-        ( game, currentIndex ) =
-            case model.showArchive of
-                Nothing ->
-                    ( model.game, -1 )
-
-                Just ( g, i ) ->
-                    ( g, i )
-    in
-    if index == currentIndex then
-        model |> withNoCmd
-
-    else if index == -1 then
-        { model
-            | game = game
-            , showArchive = Nothing
-            , showMove = Nothing
-        }
-            |> withNoCmd
-
-    else
-        case LE.getAt index game.archives of
-            Nothing ->
-                { model
-                    | game = game
-                    , showArchive = Nothing
-                    , showMove = Nothing
-                }
-                    |> withNoCmd
-
-            Just archivedGame ->
-                { model
-                    | game =
-                        { game
-                            | gameState =
-                                Interface.unarchiveGame archivedGame
-                                    game.gameState
-                        }
-                    , showArchive =
-                        Just ( game, index )
-                    , showMove = Nothing
-                }
-                    |> withNoCmd
-
-
-gameStateToTestModeInitialState : GameState -> TestModeInitialState
-gameStateToTestModeInitialState gameState =
-    let
-        { newBoard, moves, whoseTurn, selected, legalMoves } =
-            gameState
-    in
-    { board = newBoard
-    , moves = moves
-    , whoseTurn = whoseTurn
-    , selected = selected
-    , legalMoves = legalMoves
-    }
-
-
-setTestMode : Bool -> Model -> ( Model, Cmd Msg )
-setTestMode isTestMode model =
-    let
-        game =
-            model.game
-
-        gameState =
-            game.gameState
-    in
-    if isTestMode == (gameState.testMode /= Nothing) then
-        model |> withNoCmd
-
-    else
-        let
-            gs =
-                if isTestMode then
-                    { gameState
-                        | testMode =
-                            case model.lastTestMode of
-                                Nothing ->
-                                    Just
-                                        { piece = { pieceType = Golem, color = WhiteColor }
-                                        , clear = False
-                                        }
-
-                                jtm ->
-                                    jtm
-                        , testModeInitialState =
-                            Just <| gameStateToTestModeInitialState gameState
-                    }
-
-                else
-                    let
-                        ( initialBoard, moves ) =
-                            if Just (gameStateToTestModeInitialState gameState) == gameState.testModeInitialState then
-                                ( gameState.initialBoard, gameState.moves )
-
-                            else
-                                ( Just <| Types.InitialBoard gameState.newBoard gameState.whoseTurn, [] )
-                    in
-                    { gameState
-                        | initialBoard = initialBoard
-                        , moves = moves
-                        , testMode = Nothing
-                        , testModeInitialState = Nothing
-                    }
-
-            cmd =
-                if not isTestMode then
-                    send model.game.isLocal
-                        model.game.interface
-                        (SetGameStateReq
-                            { playerid = game.playerid
-                            , gameState =
-                                { gs
-                                    | winner = NoWinner
-                                    , whoseTurn =
-                                        if gs.newBoard == Board.initial then
-                                            WhitePlayer
-
-                                        else
-                                            gs.whoseTurn
-                                }
-                            }
-                        )
-
-                else
-                    Cmd.none
-
-            game2 =
-                { game | gameState = gs }
-        in
-        { model
-            | game = game2
-            , lastTestMode =
-                if isTestMode then
-                    Nothing
-
-                else
-                    gameState.testMode
-        }
-            |> withCmds [ cmd, putGame game2 ]
 
 
 clearChatSettings : Bool -> Model -> ( Model, Cmd Msg )
