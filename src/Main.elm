@@ -931,6 +931,41 @@ incomingMessage interface message mdl =
                 |> withCmds [ cmd2, putGame game ]
 
 
+nextPlayer : Game -> Game
+nextPlayer game =
+    if not game.isLocal then
+        game
+
+    else
+        let
+            p =
+                game.player + 1
+
+            player =
+                if p >= game.gameState.maxPlayers then
+                    0
+
+                else
+                    p
+
+            playerid =
+                case DE.find (\( _, p ) -> p == player) game.playerIds of
+                    Just ( id, _ ) ->
+                        id
+
+                    Nothing ->
+                        ""
+
+            yourWins =
+                Result.withDefault 0 <| Dict.get playerid game.playerWins
+        in
+        { game
+            | player = player
+            , playerid = playerid
+            , yourWins = yourWins
+        }
+
+
 {-| Do the work for `incomingMessage`.
 
 If `maybeGame` is not not `Nothing`, then a game with its `gameid` was found.
@@ -1002,31 +1037,14 @@ incomingMessageInternal interface maybeGame message model =
                             , yourWins = 0
                             , interface = interface
                         }
+                            |> nextPlayer
 
                     model3 =
-                        { model2 | gameid = gameid }
+                        { model2 | game = game2 }
                 in
                 ( Just game2
                 , model3
-                    |> withCmds
-                        [ chatCmd
-                        , if not game.isLocal then
-                            Cmd.none
-
-                          else if player == WhitePlayer then
-                            send game2.isLocal interface <|
-                                JoinReq
-                                    { gameid = gameid
-                                    , name = "Black"
-                                    }
-
-                          else
-                            send game2.isLocal interface <|
-                                JoinReq
-                                    { gameid = gameid
-                                    , name = "White"
-                                    }
-                        ]
+                    |> withCmd chatCmd
                 )
 
         JoinRsp { gameid, playerid, gameState } ->
