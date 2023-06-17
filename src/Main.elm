@@ -1103,6 +1103,10 @@ incomingMessageInternal interface maybeGame message model =
             )
 
         LeaveRsp { gameid, participant } ->
+            -- TODO
+            -- If game.local, need to remove player from game.playerIds & game.playerWins.
+            -- Also, update nextPlayer to skip non-existent player numbers in
+            -- live games.
             let
                 body : Game -> Player -> ( Maybe Game, ( Model, Cmd Msg ) )
                 body game player =
@@ -1242,7 +1246,7 @@ incomingMessageInternal interface maybeGame message model =
                                 [ maybeSendNotification
                                     game
                                     False
-                                    "It's your turn in AGOG."
+                                    "It's your turn in Say Uncle."
                                     model
                                 , sound
                                 ]
@@ -1599,6 +1603,10 @@ socketHandler response state mdl =
                         |> withNoCmd
 
                 Ok message ->
+                    let
+                        game =
+                            model.game
+                    in
                     if game.isLocal then
                         { model
                             | error =
@@ -1607,10 +1615,6 @@ socketHandler response state mdl =
                             |> withNoCmd
 
                     else
-                        let
-                            game =
-                                model.game
-                        in
                         { model | error = Nothing }
                             |> withCmd
                                 (Task.perform (IncomingMessage False game.interface) <|
@@ -1828,7 +1832,7 @@ update msg model =
                 else
                     model
 
-        { white, black } =
+        players =
             mdl.game.gameState.players
 
         focus =
@@ -2153,53 +2157,27 @@ updateInternal msg model =
                 |> withNoCmd
 
         NewGame ->
-            let
-                resigning =
-                    if not game.isLocal then
-                        game.player
+            if game.isLive then
+                { model
+                    | error = Just "Cannot create a new game while playing."
+                }
+                    |> withNoCmd
 
-                    else
-                        gameState.whoseTurn
+            else if game.player /= 0 && not game.isLocal then
+                { model
+                    | error = Just "Only the game creator can start a new game."
+                }
+                    |> withNoCmd
 
-                pid =
-                    if not game.isLocal then
-                        game.playerid
-
-                    else
-                        case resigning of
-                            WhitePlayer ->
-                                game.playerid
-
-                            BlackPlayer ->
-                                game.otherPlayerid
-
-                ( playerid, placement ) =
-                    if gameState.winner == NoWinner then
-                        ( pid
-                        , ChooseResign resigning
+            else
+                { model | requestedNew = True }
+                    |> withCmd
+                        (send model.game.isLocal model.game.interface <|
+                            PlayReq
+                                { playerid = game.playerid
+                                , placement = ChooseNew game.player
+                                }
                         )
-
-                    else
-                        let
-                            player =
-                                if game.isLocal then
-                                    WhitePlayer
-
-                                else
-                                    -- This should probably be enforced
-                                    -- by the server.
-                                    Types.otherPlayer game.player
-                        in
-                        ( game.playerid, ChooseNew player )
-            in
-            { model | requestedNew = True }
-                |> withCmd
-                    (send model.game.isLocal model.game.interface <|
-                        PlayReq
-                            { playerid = playerid
-                            , placement = placement
-                            }
-                    )
 
         StartGame ->
             startGame model
@@ -2211,11 +2189,7 @@ updateInternal msg model =
             join { model | gameid = gameid } False
 
         Disconnect ->
-            if showingArchiveOrMove model then
-                model |> withNoCmd
-
-            else
-                disconnect model
+            disconnect model
 
         SetNotificationsEnabled enabled ->
             if not enabled then
@@ -2257,11 +2231,9 @@ updateInternal msg model =
                     { game
                         | gameState =
                             { gameState
-                                | moves = []
-                                , newBoard = Board.initial
+                                | newBoard = Board.initial
                                 , selected = Nothing
-                                , whoseTurn = WhitePlayer
-                                , legalMoves = NoMoves
+                                , whoseTurn = 0
                             }
                     }
             in
