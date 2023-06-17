@@ -1255,35 +1255,6 @@ incomingMessageInternal interface maybeGame message model =
                         )
                 )
 
-        ResignRsp { gameid, gameState, player } ->
-            withRequiredGame gameid
-                (\game ->
-                    let
-                        resignMsg =
-                            if game.player == player then
-                                "You resigned."
-
-                            else
-                                playerName player game ++ " resigned."
-                    in
-                    ( Just
-                        { game
-                            | gameState = gameState
-                            , yourWins =
-                                computeYourWins gameState model
-                        }
-                    , { model
-                        | error =
-                            if game.isLocal then
-                                Nothing
-
-                            else
-                                Just resignMsg
-                      }
-                        |> withCmd (maybeSendNotification game True resignMsg model)
-                    )
-                )
-
         AnotherGameRsp { gameid, gameState, player } ->
             withRequiredGame gameid
                 (\game ->
