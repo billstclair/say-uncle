@@ -1066,43 +1066,35 @@ incomingMessageInternal interface maybeGame message model =
                     else
                         player
 
+                yourWins =
+                    case Dict.get playerid game.playerWins of
+                        Nothing ->
+                            0
+
+                        Just wins ->
+                            wins
+
                 game2 =
                     { game
                         | gameid = gameid
+                        , playerIds = Dict.insert playerid player game.playerIds
+                        , playerWins =
+                            Dict.insert playerid yourWins game.playerWins
                         , gameState = gameState
                         , isLive = True
                         , player = newPlayer
-                        , yourWins = 0
+                        , yourWins = yourWins
                         , interface = interface
                     }
-
-                game3 =
-                    if game2.isLocal then
-                        { game2
-                            | otherPlayerid =
-                                case playerid of
-                                    Just p ->
-                                        p
-
-                                    Nothing ->
-                                        ""
-                        }
-
-                    else
-                        case playerid of
-                            Nothing ->
-                                game2
-
-                            Just pid ->
-                                { game2 | playerid = pid }
+                        |> nextPlayer
 
                 ( model3, _ ) =
-                    updateGame game3 model2
+                    updateGame game2 model2
 
                 msg =
                     "The game is on!"
             in
-            ( Just game3
+            ( Just game2
             , { model3 | error = error }
                 |> withCmds
                     [ chatCmd

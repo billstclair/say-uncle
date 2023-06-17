@@ -458,7 +458,7 @@ generalMessageProcessorInternal isProxyServer state message =
                         , Just <|
                             JoinRsp
                                 { gameid = gameid
-                                , playerid = Just playerid
+                                , playerid = playerid
                                 , gameState = gameState2
                                 }
                         )

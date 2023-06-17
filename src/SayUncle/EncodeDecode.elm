@@ -1079,7 +1079,7 @@ messageEncoderInternal includePrivate message =
         JoinRsp { gameid, playerid, gameState } ->
             ( Rsp "join"
             , [ ( "gameid", JE.string gameid )
-              , ( "playerid", encodeMaybe JE.string playerid )
+              , ( "playerid", JE.string playerid )
               , ( "gameState", encodeGameState includePrivate gameState )
               ]
             )
@@ -1356,7 +1356,7 @@ joinRspDecoder =
                 }
         )
         |> required "gameid" JD.string
-        |> required "playerid" (JD.nullable JD.string)
+        |> required "playerid" JD.string
         |> required "gameState" gameStateDecoder
 
 

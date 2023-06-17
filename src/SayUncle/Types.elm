@@ -368,7 +368,7 @@ type Message
         }
     | JoinRsp
         { gameid : GameId
-        , playerid : Maybe PlayerId
+        , playerid : PlayerId
         , gameState : GameState
         }
       -- Disallowed if SayUncle.WhichServer.allowGameState is False
@@ -473,7 +473,7 @@ messageToPlayerid message =
             Just playerid
 
         JoinRsp { playerid } ->
-            playerid
+            Just playerid
 
         UpdateReq { playerid } ->
             Just playerid
@@ -547,7 +547,7 @@ type MessageForLog
         }
     | JoinRspLog
         { gameid : GameId
-        , playerid : Maybe PlayerId
+        , playerid : PlayerId
         , gameState : String
         }
     | SetGameStateReqLog
