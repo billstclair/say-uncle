@@ -1123,10 +1123,11 @@ messageEncoderInternal includePrivate message =
               ]
             )
 
-        LeaveRsp { gameid, participant } ->
+        LeaveRsp { gameid, participant, name } ->
             ( Rsp "leave"
             , [ ( "gameid", JE.string gameid )
               , ( "participant", JE.int participant )
+              , ( "name", JE.string name )
               ]
             )
 
@@ -1389,14 +1390,16 @@ playRspDecoder =
 leaveRspDecoder : Decoder Message
 leaveRspDecoder =
     JD.succeed
-        (\gameid participant ->
+        (\gameid participant name ->
             LeaveRsp
                 { gameid = gameid
                 , participant = participant
+                , name = name
                 }
         )
         |> required "gameid" JD.string
         |> required "participant" JD.int
+        |> required "name" JD.string
 
 
 anotherGameRspDecoder : Decoder Message
@@ -1608,7 +1611,6 @@ encodeNamedGame game =
         , ( "player", encodePlayer game.player )
         , ( "playerid", JE.string game.playerid )
         , ( "isLive", JE.bool game.isLive )
-        , ( "yourWins", JE.int game.yourWins )
         ]
 
 
@@ -1624,7 +1626,6 @@ namedGameDecoder proxyServer =
         |> required "player" playerDecoder
         |> required "playerid" JD.string
         |> required "isLive" JD.bool
-        |> required "yourWins" JD.int
         -- interfaceIsProxy
         |> hardcoded True
         |> hardcoded proxyServer

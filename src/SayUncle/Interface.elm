@@ -479,7 +479,12 @@ generalMessageProcessorInternal isProxyServer state message =
                         in
                         ( ServerInterface.updateGame gameid gs state2
                         , Just <|
-                            UpdateRsp
+                            (if gs.winner == NoWinner then
+                                UpdateRsp
+
+                             else
+                                GameOverRsp
+                            )
                                 { gameid = gameid
                                 , gameState = gs
                                 }
@@ -625,8 +630,13 @@ playReq : Bool -> Types.ServerState -> Message -> PlayerId -> Choice -> GameId -
 playReq isProxyServer state message playerid placement gameid gameState player =
     if
         not isProxyServer
-            && (gameState.winner == NoWinner)
-            && (player /= gameState.player)
+            && (((gameState.winner == NoWinner)
+                    && (player /= gameState.player)
+                )
+                    || ((gameState.winner == NoWinner)
+                            && (player == 0)
+                       )
+               )
     then
         errorRes message state "It's not your turn."
 
@@ -772,7 +782,12 @@ playReq isProxyServer state message playerid placement gameid gameState player =
                             nextGameState
                             state
                         , Just <|
-                            PlayRsp
+                            (if nextGameState.winner == NoWinner then
+                                PlayRsp
+
+                             else
+                                GameOverRsp
+                            )
                                 { gameid = gameid
                                 , gameState = nextGameState
                                 }
@@ -958,7 +973,7 @@ playReq isProxyServer state message playerid placement gameid gameState player =
                         newGameState
                         state
                     , Just <|
-                        PlayRsp
+                        GameOverRsp
                             { gameid = gameid
                             , gameState = newGameState
                             }
@@ -1011,7 +1026,7 @@ playReq isProxyServer state message playerid placement gameid gameState player =
 
             ChooseStart ->
                 if player /= 0 then
-                    errorRes message state "Only the first player can start the game."
+                    errorRes message state "Only the first player can start a new game."
 
                 else
                     let

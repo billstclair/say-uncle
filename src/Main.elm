@@ -464,7 +464,6 @@ initialGame seed =
     , player = 0
     , playerid = ""
     , isLive = False
-    , yourWins = 0
 
     -- not persistent
     , interfaceIsProxy = True
@@ -675,7 +674,7 @@ handleGetResponse label key value model =
             if key == pk.model then
                 let
                     cmd =
-                        listKeysLabeled pk.game gamePrefix
+                        listKeysLabeled pk.game pk.game
                 in
                 case ED.decodeSavedModel value of
                     Err e ->
@@ -938,15 +937,15 @@ nextPlayer game =
 
     else
         let
-            p =
+            np =
                 game.player + 1
 
             player =
-                if p >= game.gameState.maxPlayers then
+                if np >= game.gameState.maxPlayers then
                     0
 
                 else
-                    p
+                    np
 
             playerid =
                 case DE.find (\( _, p ) -> p == player) game.playerIds of
@@ -955,14 +954,10 @@ nextPlayer game =
 
                     Nothing ->
                         ""
-
-            yourWins =
-                Result.withDefault 0 <| Dict.get playerid game.playerWins
         in
         { game
             | player = player
             , playerid = playerid
-            , yourWins = yourWins
         }
 
 
@@ -1034,7 +1029,6 @@ incomingMessageInternal interface maybeGame message model =
                             , player = player
                             , playerid = playerid
                             , isLive = True
-                            , yourWins = 0
                             , interface = interface
                         }
                             |> nextPlayer
@@ -1052,70 +1046,46 @@ incomingMessageInternal interface maybeGame message model =
                 game =
                     model.game
 
-                ( model2, chatCmd ) =
-                    if not wasRestored then
-                        clearChatSettings True model
-
-                    else
-                        model |> withNoCmd
-
                 newPlayer =
                     if playerid == Nothing then
                         game.player
 
                     else
-                        player
-
-                yourWins =
-                    case Dict.get playerid game.playerWins of
-                        Nothing ->
-                            0
-
-                        Just wins ->
-                            wins
+                        List.length game.playerIds
 
                 game2 =
                     { game
                         | gameid = gameid
-                        , playerIds = Dict.insert playerid player game.playerIds
-                        , playerWins =
-                            Dict.insert playerid yourWins game.playerWins
+                        , playerIds = Dict.insert playerid newPlayer game.playerIds
                         , gameState = gameState
                         , isLive = True
                         , player = newPlayer
-                        , yourWins = yourWins
                         , interface = interface
                     }
                         |> nextPlayer
 
-                ( model3, _ ) =
-                    updateGame game2 model2
+                ( model2, _ ) =
+                    updateGame game2 model
 
                 msg =
                     "The game is on!"
             in
             ( Just game2
-            , { model3 | error = error }
+            , model2
                 |> withCmds
-                    [ chatCmd
-                    , maybeSendNotification game3 False msg model2
+                    [ maybeSendNotification game2 False msg model2
                     ]
             )
 
-        LeaveRsp { gameid, participant } ->
+        LeaveRsp { gameid, participant, name } ->
             -- TODO
             -- If game.local, need to remove player from game.playerIds & game.playerWins.
-            -- Also, update nextPlayer to skip non-existent player numbers in
-            -- live games.
+            -- Also, update nextPlayer (and Interface.nextPlayer) to
+            -- skip non-existent player numbers in live games.
             let
                 body : Game -> Player -> ( Maybe Game, ( Model, Cmd Msg ) )
                 body game player =
                     let
-                        name =
-                            playerName
-                                (Types.otherPlayer game.player)
-                                game
-
                         leftMsg =
                             name ++ " left" ++ "."
 
@@ -1149,47 +1119,8 @@ incomingMessageInternal interface maybeGame message model =
                                     Cmd.none
                                 ]
                         )
-
-                err : Game -> String -> ( Maybe Game, ( Model, Cmd Msg ) )
-                err game name =
-                    let
-                        isYourGame =
-                            Just name == game.watcherName
-
-                        ( game2, needsUpdate ) =
-                            if isYourGame then
-                                ( { game
-                                    | gameid = ""
-                                    , playerid = ""
-                                    , isLive = False
-                                    , watcherName = Nothing
-                                  }
-                                , True
-                                )
-
-                            else
-                                ( game, False )
-                    in
-                    ( if needsUpdate then
-                        Just game2
-
-                      else
-                        Nothing
-                    , { model
-                        | error =
-                            if isYourGame then
-                                Just "You stopped spectating."
-
-                            else
-                                Just <| "Spectator left: " ++ name ++ "."
-                      }
-                        |> withNoCmd
-                    )
             in
-            withRequiredGame gameid
-                (\game ->
-                    Interface.ensuringPlayer participant (err game) (body game)
-                )
+            withRequiredGame gameid body
 
         UpdateRsp { gameid, gameState } ->
             withRequiredGame gameid
@@ -1206,56 +1137,24 @@ incomingMessageInternal interface maybeGame message model =
         PlayRsp { gameid, gameState } ->
             withRequiredGame gameid
                 (\game ->
-                    let
-                        sound =
-                            if gameState.whoseTurn /= game.gameState.whoseTurn then
-                                Task.perform PlaySound <| Task.succeed "sounds/move.mp3"
-
-                            else if
-                                (gameState.jumps /= [])
-                                    && (gameState.jumps /= game.gameState.jumps)
-                            then
-                                Task.perform PlaySound <| Task.succeed "sounds/jump.mp3"
-
-                            else
-                                Cmd.none
-
-                        error =
-                            if game.watcherName == Nothing then
-                                Nothing
-
-                            else
-                                case gameState.requestUndo of
-                                    NoRequestUndo ->
-                                        Nothing
-
-                                    RequestUndo msg ->
-                                        Just <| "Undo requested: " ++ maybeNoText msg
-
-                                    DenyUndo msg ->
-                                        Just <| "Undo denied: " ++ maybeNoText msg
-                    in
                     if not game.isLocal then
                         ( Just
                             { game
                                 | gameState = gameState
-                                , yourWins = computeYourWins gameState model
                             }
-                        , { model | error = error }
+                        , model
                             |> withCmds
                                 [ maybeSendNotification
                                     game
                                     False
                                     "It's your turn in Say Uncle."
                                     model
-                                , sound
                                 ]
                         )
 
                     else
-                        ( Just { game | gameState = gameState }
+                        ( Just ({ game | gameState = gameState } |> nextPlayer)
                         , model
-                            |> withCmd sound
                         )
                 )
 
@@ -1267,9 +1166,7 @@ incomingMessageInternal interface maybeGame message model =
                             if not game.isLocal && not model.requestedNew then
                                 let
                                     m =
-                                        playerName (Types.otherPlayer player)
-                                            { game | gameState = gameState }
-                                            ++ " asked for a new game"
+                                        "Another game."
                                 in
                                 ( Just m, m )
 
@@ -1293,22 +1190,19 @@ incomingMessageInternal interface maybeGame message model =
                         { game
                             | gameState = gameState
                             , player = player
-                            , archives =
-                                if game.gameState.moves == [] then
-                                    game.archives
-
-                                else
-                                    Interface.archiveGame game.gameState
-                                        :: game.archives
                         }
                     , mdl2 |> withCmd cmd
                     )
                 )
 
         GameOverRsp { gameid, gameState } ->
+            let
+                newGameState =
+                    updatePlayerWins gameState
+            in
             withRequiredGame gameid
                 (\game ->
-                    ( Just { game | gameState = gameState }
+                    ( Just { game | gameState = newGameState }
                     , model |> withNoCmd
                     )
                 )
@@ -1368,7 +1262,7 @@ incomingMessageInternal interface maybeGame message model =
                         , webSocketConnect
                             model.game
                             (ConnectionSpec <|
-                                RestoreGameConnection game
+                                RestoreGameConnection model.game
                             )
                             model
                         )
@@ -1411,7 +1305,6 @@ incomingMessageInternal interface maybeGame message model =
                             | gameid = ""
                             , playerid = ""
                             , isLive = False
-                            , watcherName = Nothing
                         }
                     , model |> withNoCmd
                     )
@@ -1434,9 +1327,6 @@ incomingMessageInternal interface maybeGame message model =
                                 )
                     in
                     ( Nothing
-                    , case maybeTuple of
-                        Nothing ->
-                            model2 |> withNoCmd
                     , model2
                         |> withCmds
                             [ cmd
@@ -1456,25 +1346,49 @@ incomingMessageInternal interface maybeGame message model =
             ( Nothing, model |> withNoCmd )
 
 
-computeYourWins : GameState -> Model -> Int
-computeYourWins gameState model =
+getScore : Player -> GameState -> Int
+getScore player gameState =
+    Maybe.withDefault 0 <| Dict.get player gameState.playerWins
+
+
+updatePlayerWins : GameState -> GameState
+updatePlayerWins gameState =
     let
-        game =
-            model.game
+        playerWins : List ( Player, Int )
+        playerWins =
+            case gameState.winner of
+                NoWinner ->
+                    []
 
-        winner =
-            gameState.winner
+                StockUsedWinner p ->
+                    [ ( p, 1 ) ]
+
+                SayUncleWinner { saidUncle, won } ->
+                    if saidUncle == won then
+                        [ ( saidUncle, 2 ) ]
+
+                    else if getScore saidUncle gameState > 0 then
+                        [ ( saidUncle, -1 ), ( won, 1 ) ]
+
+                    else
+                        [ ( won, 2 ) ]
+
+        folder : ( Player, Int ) -> Dict Player Int -> Dict Player Int
+        folder ( p, d ) wins =
+            let
+                w =
+                    case Dict.get p wins of
+                        Nothing ->
+                            d
+
+                        Just i ->
+                            d + i
+            in
+            Dict.insert p wins w
     in
-    if
-        (winner /= NoWinner)
-            && (game.gameState.winner == NoWinner)
-            && Just game.player
-            == Types.winPlayer winner
-    then
-        game.yourWins + 1
-
-    else
-        game.yourWins
+    { gameState
+        | playerWins = List.foldl folder gameState.playerWins playerWins
+    }
 
 
 setPage : Page -> Cmd Msg
@@ -1550,7 +1464,6 @@ maybeSendNotification : Game -> Bool -> String -> Model -> Cmd Msg
 maybeSendNotification game ignoreWhoseTurn title model =
     if
         model.notificationsEnabled
-            && (game.watcherName == Nothing)
             && (ignoreWhoseTurn || game.gameState.whoseTurn == game.player)
             && not game.isLocal
             && not model.visible
@@ -1734,32 +1647,25 @@ processConnectionReason game connectionReason model =
                     { playerid = playerid }
 
         RestoreGameConnection localGame ->
-            case game.watcherName of
-                Just _ ->
-                    processConnectionReason game
-                        (JoinRestoredGameConnection game.gameid)
-                        model
+            let
+                player =
+                    localGame.player
 
-                Nothing ->
-                    let
-                        player =
-                            localGame.player
+                name =
+                    playerName player localGame
+            in
+            if name == "" then
+                Cmd.none
 
-                        name =
-                            playerName player localGame
-                    in
-                    if name == "" then
-                        Cmd.none
-
-                    else
-                        send isLocal interface <|
-                            NewReq
-                                { name = name
-                                , player = player
-                                , publicType = NotPublic
-                                , restoreState = Just localGame.gameState
-                                , maybeGameid = Just localGame.gameid
-                                }
+            else
+                send isLocal interface <|
+                    NewReq
+                        { name = name
+                        , player = player
+                        , publicType = NotPublic
+                        , restoreState = Just localGame.gameState
+                        , maybeGameid = Just localGame.gameid
+                        }
 
         JoinRestoredGameConnection gameid ->
             -- Errors are generated in ErrorRsp handler,
@@ -1872,7 +1778,7 @@ update msg model =
                 ClearStorage ->
                     False
 
-                ChatUpdate _ _ _ ->
+                ChatUpdate _ _ ->
                     False
 
                 ChatSend _ _ ->
@@ -1936,16 +1842,6 @@ recordMessage interfaceIsLocal isSend message model =
     }
 
 
-showingArchiveOrMove : Model -> Bool
-showingArchiveOrMove model =
-    model.showArchive /= Nothing || model.showMove /= Nothing
-
-
-isWatcher : Model -> Bool
-isWatcher model =
-    model.game.watcherName /= Nothing
-
-
 updateInternal : Msg -> Model -> ( Model, Cmd Msg )
 updateInternal msg model =
     let
@@ -2003,7 +1899,7 @@ updateInternal msg model =
                 |> withNoCmd
 
         SetIsLocal isLocal ->
-            if game.isLocal == isLocal || showingArchiveOrMove model then
+            if game.isLocal == isLocal then
                 model |> withNoCmd
 
             else
@@ -2020,7 +1916,6 @@ updateInternal msg model =
                             | isLocal = isLocal
                             , isLive = False
                             , playerid = ""
-                            , watcherName = Nothing
                             , interface = interface
                             , interfaceIsProxy = isLocal
                         }
@@ -2231,8 +2126,12 @@ updateInternal msg model =
                     { game
                         | gameState =
                             { gameState
-                                | newBoard = Board.initial
-                                , selected = Nothing
+                                | board =
+                                    Board.initial
+                                        2
+                                        (Random.initialSeed <|
+                                            Time.posixToMillis model.tick
+                                        )
                                 , whoseTurn = 0
                             }
                     }
@@ -2504,10 +2403,7 @@ disconnect model =
                 }
 
             else
-                { game
-                    | archives = []
-                    , gameState = gameState
-                }
+                { game | gameState = gameState }
     in
     { model | game = game2 }
         |> withCmds

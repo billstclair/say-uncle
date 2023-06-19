@@ -394,6 +394,7 @@ type Message
     | LeaveRsp
         { gameid : GameId
         , participant : Participant
+        , name : String
         }
     | AnotherGameRsp
         { gameid : GameId
@@ -574,6 +575,7 @@ type MessageForLog
     | LeaveRspLog
         { gameid : GameId
         , participant : Participant
+        , name : String
         }
     | AnotherGameRspLog
         { playerid : PlayerId
@@ -693,7 +695,6 @@ type alias NamedGame msg =
     , player : Player
     , playerid : PlayerId
     , isLive : Bool
-    , yourWins : Int
 
     -- Not persistent
     , interfaceIsProxy : Bool
