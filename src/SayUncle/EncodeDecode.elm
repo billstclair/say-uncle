@@ -1131,10 +1131,9 @@ messageEncoderInternal includePrivate message =
               ]
             )
 
-        AnotherGameRsp { gameid, playerid, gameState } ->
+        AnotherGameRsp { gameid, gameState } ->
             ( Rsp "anotherGame"
             , [ ( "gameid", JE.string gameid )
-              , ( "playerid", JE.string playerid )
               , ( "gameState", encodeGameState includePrivate gameState )
               ]
             )
@@ -1405,15 +1404,13 @@ leaveRspDecoder =
 anotherGameRspDecoder : Decoder Message
 anotherGameRspDecoder =
     JD.succeed
-        (\gameid playerid gameState ->
+        (\gameid gameState ->
             AnotherGameRsp
                 { gameid = gameid
-                , playerid = playerid
                 , gameState = gameState
                 }
         )
         |> required "gameid" JD.string
-        |> required "playerid" JD.string
         |> required "gameState" gameStateDecoder
 
 
@@ -1708,10 +1705,9 @@ messageToLogMessage message =
         LeaveRsp rec ->
             LeaveRspLog rec
 
-        AnotherGameRsp { playerid, gameState } ->
+        AnotherGameRsp { gameState } ->
             AnotherGameRspLog
-                { playerid = playerid
-                , gameState = gameStateString gameState
+                { gameState = gameStateString gameState
                 }
 
         GameOverRsp { gameid, gameState } ->

@@ -398,7 +398,6 @@ type Message
         }
     | AnotherGameRsp
         { gameid : GameId
-        , playerid : PlayerId
         , gameState : GameState
         }
     | GameOverRsp
@@ -578,8 +577,7 @@ type MessageForLog
         , name : String
         }
     | AnotherGameRspLog
-        { playerid : PlayerId
-        , gameState : String
+        { gameState : String
         }
     | GameOverRspLog
         { gameid : GameId

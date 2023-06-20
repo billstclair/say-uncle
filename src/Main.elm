@@ -454,11 +454,20 @@ initialChatSettings zone =
 
 
 initialGame : Maybe Seed -> Game
-initialGame seed =
+initialGame maybeSeed =
+    let
+        seed =
+            case maybeSeed of
+                Just s ->
+                    s
+
+                Nothing ->
+                    makeSeed zeroTick
+    in
     { gameid = ""
     , playerIds = Dict.empty
     , playerWins = Dict.empty
-    , gameState = Interface.emptyGameState Types.emptyPlayerNames
+    , gameState = Interface.emptyGameState Types.emptyPlayerNames 0 0 seed
     , isLocal = False
     , serverUrl = WhichServer.serverUrl
     , player = 0
@@ -467,7 +476,7 @@ initialGame seed =
 
     -- not persistent
     , interfaceIsProxy = True
-    , interface = proxyServer seed
+    , interface = proxyServer maybeSeed
     }
 
 
@@ -688,17 +697,6 @@ handleGetResponse label key value model =
                 model |> withNoCmd
 
 
-updateGame : (Game -> Game) -> Model -> ( Model, Maybe Game )
-updateGame updater model =
-    let
-        game =
-            updater model.game
-    in
-    ( { model | game = game }
-    , Just game
-    )
-
-
 handleGetGameResponse : String -> Value -> Model -> ( Model, Cmd Msg )
 handleGetGameResponse _ value model =
     let
@@ -784,19 +782,6 @@ updateChat model updater =
         | chatSettings = chat
       }
     , chat
-    )
-
-
-updateChat2 : Model -> (ChatSettings -> ( ChatSettings, a )) -> ( Model, Maybe ( ChatSettings, a ) )
-updateChat2 model updater =
-    let
-        ( chat, a ) =
-            updater model.chatSettings
-    in
-    ( { model
-        | chatSettings = chat
-      }
-    , Just ( chat, a )
     )
 
 
@@ -922,11 +907,7 @@ incomingMessage interface message mdl =
             model2 |> withCmd cmd2
 
         Just game ->
-            let
-                ( model3, _ ) =
-                    updateGame game model2
-            in
-            model3
+            { model2 | game = game }
                 |> withCmds [ cmd2, putGame game ]
 
 
@@ -971,6 +952,7 @@ and needs to be persisted by `incomingMessage`. Otherwise, it was NOT changed.
 incomingMessageInternal : ServerInterface -> Maybe Game -> Message -> Model -> ( Maybe Game, ( Model, Cmd Msg ) )
 incomingMessageInternal interface maybeGame message model =
     let
+        withRequiredGame : GameId -> (Game -> ( Maybe Game, ( Model, Cmd Msg ) )) -> ( Maybe Game, ( Model, Cmd Msg ) )
         withRequiredGame gameid thunk =
             case maybeGame of
                 Just game ->
@@ -1047,11 +1029,7 @@ incomingMessageInternal interface maybeGame message model =
                     model.game
 
                 newPlayer =
-                    if playerid == Nothing then
-                        game.player
-
-                    else
-                        List.length game.playerIds
+                    Dict.size game.playerIds
 
                 game2 =
                     { game
@@ -1064,8 +1042,8 @@ incomingMessageInternal interface maybeGame message model =
                     }
                         |> nextPlayer
 
-                ( model2, _ ) =
-                    updateGame game2 model
+                model2 =
+                    { model | game = game2 }
 
                 msg =
                     "The game is on!"
@@ -1083,9 +1061,12 @@ incomingMessageInternal interface maybeGame message model =
             -- Also, update nextPlayer (and Interface.nextPlayer) to
             -- skip non-existent player numbers in live games.
             let
-                body : Game -> Player -> ( Maybe Game, ( Model, Cmd Msg ) )
-                body game player =
+                body : Game -> ( Maybe Game, ( Model, Cmd Msg ) )
+                body game =
                     let
+                        player =
+                            participant
+
                         leftMsg =
                             name ++ " left" ++ "."
 
@@ -1154,11 +1135,11 @@ incomingMessageInternal interface maybeGame message model =
 
                     else
                         ( Just ({ game | gameState = gameState } |> nextPlayer)
-                        , model
+                        , model |> withNoCmd
                         )
                 )
 
-        AnotherGameRsp { gameid, gameState, player } ->
+        AnotherGameRsp { gameid, gameState } ->
             withRequiredGame gameid
                 (\game ->
                     let
@@ -1189,20 +1170,18 @@ incomingMessageInternal interface maybeGame message model =
                     ( Just
                         { game
                             | gameState = gameState
-                            , player = player
                         }
                     , mdl2 |> withCmd cmd
                     )
                 )
 
         GameOverRsp { gameid, gameState } ->
-            let
-                newGameState =
-                    updatePlayerWins gameState
-            in
             withRequiredGame gameid
                 (\game ->
-                    ( Just { game | gameState = newGameState }
+                    ( Just
+                        ({ game | gameState = gameState }
+                            |> updatePlayerWins
+                        )
                     , model |> withNoCmd
                     )
                 )
@@ -1248,7 +1227,7 @@ incomingMessageInternal interface maybeGame message model =
                 Ok (UpdateReq { playerid }) ->
                     -- Server has forgotten the game.
                     -- Restore it.
-                    if model.playerId == "" then
+                    if model.game.playerid == "" then
                         ( Nothing
                         , { model
                             | error =
@@ -1316,18 +1295,16 @@ incomingMessageInternal interface maybeGame message model =
             withRequiredGame gameid
                 (\game ->
                     let
-                        ( model2, ( _, cmd ) ) =
-                            updateChat2
-                                model
-                                (\chat ->
-                                    ElmChat.addLineSpec chat <|
-                                        ElmChat.makeLineSpec text
-                                            (Just name)
-                                            (Just model.time)
-                                )
+                        ( chat, cmd ) =
+                            ElmChat.addLineSpec model.chatSettings <|
+                                ElmChat.makeLineSpec text
+                                    (Just name)
+                                    (Just model.time)
                     in
                     ( Nothing
-                    , model2
+                    , { model
+                        | chatSettings = chat
+                      }
                         |> withCmds
                             [ cmd
 
@@ -1351,9 +1328,12 @@ getScore player gameState =
     Maybe.withDefault 0 <| Dict.get player gameState.playerWins
 
 
-updatePlayerWins : GameState -> GameState
-updatePlayerWins gameState =
+updatePlayerWins : Game -> Game
+updatePlayerWins game =
     let
+        gameState =
+            game.gameState
+
         playerWins : List ( Player, Int )
         playerWins =
             case gameState.winner of
@@ -1386,8 +1366,8 @@ updatePlayerWins gameState =
             in
             Dict.insert p wins w
     in
-    { gameState
-        | playerWins = List.foldl folder gameState.playerWins playerWins
+    { game
+        | playerWins = List.foldl folder game.playerWins playerWins
     }
 
 
@@ -1535,8 +1515,20 @@ socketHandler response state mdl =
                                 )
 
         ClosedResponse { expected, reason } ->
+            let
+                game =
+                    model.game
+
+                game2 =
+                    if game.isLocal then
+                        game
+
+                    else
+                        { game | isLive = False }
+            in
             { model
-                | connectionSpecQueue = Fifo.empty
+                | game = game
+                , connectionSpecQueue = Fifo.empty
                 , error =
                     if Debug.log "ClosedResponse, expected" expected then
                         model.error
@@ -1544,14 +1536,6 @@ socketHandler response state mdl =
                     else
                         Just <| "Connection unexpectedly closed: " ++ reason
             }
-                |> updateGame
-                    (\g ->
-                        if g.isLocal then
-                            g
-
-                        else
-                            { g | isLive = False }
-                    )
                 |> withNoCmd
 
         ConnectedResponse crrec ->
@@ -2319,8 +2303,7 @@ webSocketConnect game spec model =
                     , isLive = True
                 }
         in
-        updateGame game model
-            |> Tuple.first
+        { model | game = game }
             |> withNoCmd
 
     else
@@ -2337,8 +2320,7 @@ webSocketConnect game spec model =
                     , interfaceIsProxy = False
                 }
         in
-        updateGame newGame model
-            |> Tuple.first
+        { model | game = newGame }
             |> insertConnectionSpec (Debug.log "webSocketConnect" spec)
             |> withCmd
                 (WebSocket.makeOpen game.serverUrl

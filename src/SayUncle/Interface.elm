@@ -1020,7 +1020,6 @@ playReq isProxyServer state message playerid placement gameid gameState player =
                             AnotherGameRsp
                                 { gameid = gameid
                                 , gameState = gs
-                                , playerid = playerid
                                 }
                         )
 
