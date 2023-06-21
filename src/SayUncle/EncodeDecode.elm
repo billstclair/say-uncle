@@ -817,27 +817,36 @@ encodeGameState includePrivate gameState =
     let
         { board, maxPlayers, winningPoints, players, whoseTurn, player, state, score, winner, matchWinner } =
             gameState
-
-        privateValue =
-            if includePrivate then
-                encodePrivateGameState gameState.private
-
-            else
-                JE.null
     in
     JE.object
-        [ ( "board", encodeBoard board )
-        , ( "maxPlayers", JE.int maxPlayers )
-        , ( "winningPoints", JE.int winningPoints )
-        , ( "players", encodePlayerNames players )
-        , ( "whoseTurn", encodePlayer whoseTurn )
-        , ( "player", encodePlayer player )
-        , ( "state", encodeState state )
-        , ( "score", encodeScore score )
-        , ( "winner", encodeWinner winner )
-        , ( "matchWinner", encodeMaybe JE.int matchWinner )
-        , ( "private", privateValue )
-        ]
+        (List.concat
+            [ [ ( "board", encodeBoard board )
+              , ( "maxPlayers", JE.int maxPlayers )
+              , ( "winningPoints", JE.int winningPoints )
+              , ( "players", encodePlayerNames players )
+              , ( "whoseTurn", encodePlayer whoseTurn )
+              , ( "player", encodePlayer player )
+              , ( "state", encodeState state )
+              , ( "score", encodeScore score )
+              , ( "winner", encodeWinner winner )
+              ]
+            , case matchWinner of
+                Nothing ->
+                    []
+
+                _ ->
+                    [ ( "matchWinner", encodeMaybe JE.int matchWinner ) ]
+            , if not includePrivate then
+                []
+
+              else
+                let
+                    privateValue =
+                        encodePrivateGameState gameState.private
+                in
+                [ ( "private", privateValue ) ]
+            ]
+        )
 
 
 gameStateDecoder : Decoder GameState
@@ -853,7 +862,7 @@ gameStateDecoder =
         |> required "score" scoreDecoder
         |> required "winner" winnerDecoder
         |> optional "matchWinner" (JD.nullable JD.int) Nothing
-        |> required "private" privateGameStateDecoder
+        |> optional "private" privateGameStateDecoder Types.emptyPrivateGameState
 
 
 encodeChoice : Choice -> Value
