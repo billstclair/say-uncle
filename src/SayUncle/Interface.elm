@@ -284,7 +284,7 @@ setNextPlayer gameState =
 generalMessageProcessorInternal : Bool -> Types.ServerState -> Message -> ( Types.ServerState, Maybe Message )
 generalMessageProcessorInternal isProxyServer state message =
     case message of
-        NewReq { name, publicType, maxPlayers, winningPoints, seed, restoreState, maybeGameid } ->
+        NewReq { name, publicType, maxPlayers, winningPoints, seedInt, restoreState, maybeGameid } ->
             let
                 gameidError =
                     case maybeGameid of
@@ -309,6 +309,9 @@ generalMessageProcessorInternal isProxyServer state message =
                 let
                     players =
                         Dict.fromList [ ( 0, name ) ]
+
+                    seed =
+                        Random.initialSeed seedInt
 
                     gameState =
                         case restoreState of

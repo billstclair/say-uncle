@@ -346,7 +346,7 @@ type Message
         , publicType : PublicType
         , maxPlayers : Int
         , winningPoints : Int
-        , seed : Seed
+        , seedInt : Int
         , restoreState : Maybe GameState
         , maybeGameid : Maybe GameId
         }

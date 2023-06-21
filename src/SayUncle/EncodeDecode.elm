@@ -1048,12 +1048,13 @@ messageEncoderWithPrivate =
 messageEncoderInternal : Bool -> Message -> ( ReqRsp, Plist )
 messageEncoderInternal includePrivate message =
     case message of
-        NewReq { name, publicType, maxPlayers, winningPoints, restoreState, maybeGameid } ->
+        NewReq { name, publicType, maxPlayers, winningPoints, seedInt, restoreState, maybeGameid } ->
             ( Req "new"
             , [ ( "name", JE.string name )
               , ( "publicType", encodePublicType publicType )
               , ( "maxPlayers", JE.int maxPlayers )
               , ( "winningPoints", JE.int winningPoints )
+              , ( "seedInt", JE.int seedInt )
               , ( "restoreState"
                 , encodeMaybe (encodeGameState includePrivate) restoreState
                 )
@@ -1227,13 +1228,13 @@ messageEncoderInternal includePrivate message =
 newReqDecoder : Decoder Message
 newReqDecoder =
     JD.succeed
-        (\name publicType maxPlayers winningPoints restoreState maybeGameid ->
+        (\name publicType maxPlayers winningPoints seedInt restoreState maybeGameid ->
             NewReq
                 { name = name
                 , publicType = publicType
                 , maxPlayers = maxPlayers
                 , winningPoints = winningPoints
-                , seed = zeroSeed
+                , seedInt = seedInt
                 , restoreState = restoreState
                 , maybeGameid = maybeGameid
                 }
@@ -1242,6 +1243,7 @@ newReqDecoder =
         |> required "publicType" publicTypeDecoder
         |> required "maxPlayers" JD.int
         |> required "winningPoints" JD.int
+        |> required "seedInt" JD.int
         |> required "restoreState" (JD.nullable gameStateDecoder)
         |> optional "maybeGameid" (JD.nullable JD.string) Nothing
 

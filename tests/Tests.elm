@@ -31,7 +31,12 @@ import SayUncle.Types as Types
 import Set exposing (Set)
 import Test exposing (..)
 import Time
-import WebSocketFramework.Types exposing (Statistics)
+import WebSocketFramework.Types
+    exposing
+        ( Plist
+        , ReqRsp
+        , Statistics
+        )
 
 
 log =
@@ -101,6 +106,94 @@ rc x y =
     { row = x, col = y }
 
 
+fixGameStateSeed : GameState -> GameState -> GameState
+fixGameStateSeed gameState seedGameState =
+    let
+        board =
+            gameState.board
+    in
+    { gameState
+        | board =
+            { board | seed = seedGameState.board.seed }
+    }
+
+
+fixSeed : Message -> Message -> Message
+fixSeed message seedMessage =
+    case ( message, seedMessage ) of
+        ( NewReq rec, NewReq seedRec ) ->
+            case rec.restoreState of
+                Nothing ->
+                    message
+
+                Just gameState ->
+                    case seedRec.restoreState of
+                        Nothing ->
+                            message
+
+                        Just gs ->
+                            NewReq
+                                { rec
+                                    | restoreState =
+                                        Just <| fixGameStateSeed gameState gs
+                                }
+
+        ( NewRsp rec, NewRsp seedRec ) ->
+            NewRsp
+                { rec
+                    | gameState =
+                        fixGameStateSeed rec.gameState seedRec.gameState
+                }
+
+        ( JoinRsp rec, JoinRsp seedRec ) ->
+            JoinRsp
+                { rec
+                    | gameState =
+                        fixGameStateSeed rec.gameState seedRec.gameState
+                }
+
+        ( UpdateRsp rec, UpdateRsp seedRec ) ->
+            UpdateRsp
+                { rec
+                    | gameState =
+                        fixGameStateSeed rec.gameState seedRec.gameState
+                }
+
+        ( PlayRsp rec, PlayRsp seedRec ) ->
+            PlayRsp
+                { rec
+                    | gameState =
+                        fixGameStateSeed rec.gameState seedRec.gameState
+                }
+
+        ( AnotherGameRsp rec, AnotherGameRsp seedRec ) ->
+            AnotherGameRsp
+                { rec
+                    | gameState =
+                        fixGameStateSeed rec.gameState seedRec.gameState
+                }
+
+        ( GameOverRsp rec, GameOverRsp seedRec ) ->
+            GameOverRsp
+                { rec
+                    | gameState =
+                        fixGameStateSeed rec.gameState seedRec.gameState
+                }
+
+        _ ->
+            message
+
+
+messageDecoder : ( ReqRsp, Plist ) -> Message -> Result String Message
+messageDecoder pair seedMessage =
+    case ED.messageDecoder pair of
+        Ok message ->
+            Ok <| fixSeed message seedMessage
+
+        err ->
+            err
+
+
 protocolTest : Message -> String -> Test
 protocolTest message name =
     test ("protocolTest \"" ++ name ++ "\"")
@@ -109,7 +202,7 @@ protocolTest message name =
                 pair =
                     maybeLog "protocolJson" <| ED.messageEncoderWithPrivate message
             in
-            expectResult (Ok message) <| ED.messageDecoder pair
+            expectResult (Ok message) <| messageDecoder pair message
         )
 
 
@@ -120,6 +213,7 @@ protocolData =
         , publicType = NotPublic
         , maxPlayers = 3
         , winningPoints = 5
+        , seedInt = 1234
         , restoreState = Nothing
         , maybeGameid = Nothing
         }
@@ -128,6 +222,7 @@ protocolData =
         , publicType = EntirelyPublic
         , maxPlayers = 6
         , winningPoints = 10
+        , seedInt = 2345
         , restoreState = Just gameState1
         , maybeGameid = Just "Joe1"
         }
@@ -136,6 +231,7 @@ protocolData =
         , publicType = PublicFor "Bill"
         , maxPlayers = 4
         , winningPoints = 12
+        , seedInt = 3456
         , restoreState = Just gameState1
         , maybeGameid = Just "Joe2"
         }
@@ -169,7 +265,6 @@ protocolData =
     , JoinReq
         { gameid = "123"
         , name = "Irving"
-        , isRestore = False
         }
     , ReJoinReq
         { gameid = "123"
@@ -177,21 +272,8 @@ protocolData =
         }
     , JoinRsp
         { gameid = "123"
-        , playerid = Just "77"
+        , playerid = "77"
         , gameState = gameState2
-        , wasRestored = False
-        }
-    , JoinRsp
-        { gameid = "123"
-        , playerid = Just "77"
-        , gameState = gameState2
-        , wasRestored = False
-        }
-    , JoinRsp
-        { gameid = "123"
-        , playerid = Nothing
-        , gameState = gameState2
-        , wasRestored = True
         }
     , UpdateReq { playerid = "77" }
     , UpdateRsp
@@ -223,11 +305,11 @@ protocolData =
         , placement = SayUncle
         }
     , AnotherGameRsp
-        { playerid = "foo"
+        { gameid = "80"
         , gameState = gameState1
         }
     , AnotherGameRsp
-        { playerid = "foo"
+        { gameid = "81"
         , gameState = gameState2
         }
     , GameOverRsp
@@ -258,13 +340,9 @@ protocolData =
         { games =
             [ { publicGame = publicGame1
               , players = players1
-              , startTime = Time.millisToPosix 0
-              , endTime = Time.millisToPosix 200
               }
             , { publicGame = publicGame2
               , players = players2
-              , startTime = Time.millisToPosix 0
-              , endTime = Time.millisToPosix 200
               }
             ]
         }
@@ -272,13 +350,9 @@ protocolData =
         { added =
             [ { publicGame = publicGame1
               , players = players1
-              , startTime = Time.millisToPosix 0
-              , endTime = Time.millisToPosix 100
               }
             , { publicGame = publicGame2
               , players = players2
-              , startTime = Time.millisToPosix 100
-              , endTime = Time.millisToPosix 234
               }
             ]
         , removed = []
@@ -383,7 +457,6 @@ seed =
 board1 : Board
 board1 =
     Board.initial 2 seed
-        |> Tuple.first
 
 
 aceOfSpades : Card
@@ -460,6 +533,16 @@ decodeValue decoder value =
             Err <| JD.errorToString err
 
 
+fixGameStateResultSeed : GameState -> Result String GameState -> Result String GameState
+fixGameStateResultSeed seedGameState result =
+    case result of
+        Ok gameState ->
+            Ok <| fixGameStateSeed gameState seedGameState
+
+        err ->
+            err
+
+
 gameStateTest : GameState -> String -> Test
 gameStateTest gameState name =
     test ("gameStateTest \"" ++ name ++ "\"")
@@ -468,8 +551,10 @@ gameStateTest gameState name =
                 value =
                     maybeLog "gameState" <| ED.encodeGameState True gameState
             in
-            expectResult (Ok gameState) <|
-                decodeValue ED.gameStateDecoder value
+            expectResult (Ok gameState)
+                (decodeValue ED.gameStateDecoder value
+                    |> fixGameStateResultSeed gameState
+                )
         )
 
 
@@ -530,12 +615,12 @@ gameState1 =
     , maxPlayers = 4
     , winningPoints = 10
     , players = players1
-    , dealer = 2
     , whoseTurn = 0
     , player = 1
-    , state = TableauState
+    , state = InitialState
     , score = score1
     , winner = NoWinner
+    , matchWinner = Nothing
     , private = privateGameState1
     }
 
@@ -545,33 +630,33 @@ gameState2 =
     , maxPlayers = 5
     , winningPoints = 20
     , players = players1
-    , dealer = 1
     , whoseTurn = 1
     , player = 3
-    , state = TurnStockState
+    , state = TableauState
     , score = score1
     , winner = SayUncleWinner { saidUncle = 0, won = 1 }
+    , matchWinner = Just 2
     , private = privateGameState2
     }
 
 
 gameState3 =
     { gameState2
-        | state = ChooseStockState
+        | state = TurnStockState
         , winner = StockUsedWinner 0
     }
 
 
 gameState4 =
     { gameState3
-        | state = DiscardState
+        | state = ChooseStockState
         , private = privateGameState4
     }
 
 
 gameState5 =
     { gameState3
-        | state = ScoreState [ ( 0, -1 ), ( 1, 2 ) ]
+        | state = DiscardState
     }
 
 
