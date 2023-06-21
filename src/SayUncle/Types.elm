@@ -124,7 +124,7 @@ type alias Participant =
 
 type alias Score =
     { games : Int
-    , points : Dict Int Int
+    , points : Dict Player Int
     }
 
 
@@ -278,6 +278,7 @@ type alias GameState =
     , state : State
     , score : Score
     , winner : Winner
+    , matchWinner : Maybe Player
     , private : PrivateGameState --not sent over the wire
     }
 

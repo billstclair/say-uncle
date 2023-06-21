@@ -81,6 +81,7 @@ emptyGameState players maxPlayers winningPoints seed =
     , state = InitialState
     , score = Types.zeroScore
     , winner = NoWinner
+    , matchWinner = Nothing
     , private = Types.emptyPrivateGameState
     }
 

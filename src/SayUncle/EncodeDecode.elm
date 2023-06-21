@@ -815,7 +815,7 @@ stateDecoder =
 encodeGameState : Bool -> GameState -> Value
 encodeGameState includePrivate gameState =
     let
-        { board, maxPlayers, winningPoints, players, whoseTurn, player, state, score, winner } =
+        { board, maxPlayers, winningPoints, players, whoseTurn, player, state, score, winner, matchWinner } =
             gameState
 
         privateValue =
@@ -835,6 +835,7 @@ encodeGameState includePrivate gameState =
         , ( "state", encodeState state )
         , ( "score", encodeScore score )
         , ( "winner", encodeWinner winner )
+        , ( "matchWinner", encodeMaybe JE.int matchWinner )
         , ( "private", privateValue )
         ]
 
@@ -851,6 +852,7 @@ gameStateDecoder =
         |> required "state" stateDecoder
         |> required "score" scoreDecoder
         |> required "winner" winnerDecoder
+        |> optional "matchWinner" (JD.nullable JD.int) Nothing
         |> required "private" privateGameStateDecoder
 
 
