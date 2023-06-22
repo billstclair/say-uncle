@@ -318,9 +318,8 @@ view : Model -> Document Msg
 view model =
     { title = "Say Uncle"
     , body =
-        div []
-            [ text "Say Uncle User Interface under construction."
-            ]
+        [ text "Say Uncle User Interface under construction."
+        ]
     }
 
 
@@ -574,26 +573,22 @@ type alias NewReqBody =
     , publicType : PublicType
     , maxPlayers : Int
     , winningPoints : Int
-    , seed : Seed
+    , seedInt : Int
     , restoreState : Maybe GameState
     , maybeGameid : Maybe GameId
     }
 
 
-initialNewReqBody : Int -> Int -> NewReqBody
-initialNewReqBody maxPlayers winningPoints =
+initialNewReqBody : Int -> Int -> Posix -> NewReqBody
+initialNewReqBody maxPlayers winningPoints posix =
     { name = ""
     , publicType = NotPublic
     , maxPlayers = maxPlayers
     , winningPoints = winningPoints
+    , seedInt = Time.posixToMillis posix
     , restoreState = Nothing
     , maybeGameid = Nothing
     }
-
-
-initialNewReq : Message
-initialNewReq =
-    NewReq initialNewReqBody
 
 
 getViewport : Viewport -> Msg
@@ -813,8 +808,11 @@ initialNewReqCmd : Game -> Model -> Cmd Msg
 initialNewReqCmd game model =
     send game.isLocal game.interface <|
         let
+            gameState =
+                game.gameState
+
             req =
-                initialNewReqBody
+                initialNewReqBody gameState.maxPlayers gameState.winningPoints model.tick
         in
         NewReq
             { req
@@ -826,7 +824,6 @@ initialNewReqCmd game model =
 modelToSavedModel : Model -> SavedModel
 modelToSavedModel model =
     { page = model.page
-    , chooseFirst = model.chooseFirst
     , gameid = model.gameid
     , settings = model.settings
     , styleType = model.styleType
@@ -843,8 +840,6 @@ savedModelToModel savedModel model =
     in
     { model
         | page = savedModel.page
-        , chooseFirst = savedModel.chooseFirst
-        , lastTestMode = savedModel.lastTestMode
         , gameid = savedModel.gameid
         , settings = savedModel.settings
         , styleType = savedModel.styleType
@@ -928,7 +923,7 @@ nextPlayer game =
                     np
 
             playerid =
-                case DE.find (\( _, p ) -> p == player) game.playerIds of
+                case DE.find (\_ p -> p == player) game.playerIds of
                     Just ( id, _ ) ->
                         id
 
@@ -1258,7 +1253,7 @@ incomingMessageInternal interface maybeGame message model =
                                         model.game
                                 in
                                 case playerName restoredGame.player restoredGame of
-                                    "" ->
+                                    Nothing ->
                                         errorReturn ()
 
                                     _ ->
@@ -1322,7 +1317,7 @@ incomingMessageInternal interface maybeGame message model =
 
 getScore : Player -> GameState -> Int
 getScore player gameState =
-    Maybe.withDefault 0 <| Dict.get player gameState.playerWins
+    Maybe.withDefault 0 <| Dict.get player gameState.score.points
 
 
 setPage : Page -> Cmd Msg
@@ -1539,8 +1534,7 @@ processConnectionReason game connectionReason model =
             in
             send isLocal interface <|
                 NewReq
-                    { name = model.settings.name
-                    , player = model.chooseFirst
+                    { name = settings.name
                     , publicType =
                         if not settings.isPublic then
                             NotPublic
@@ -1552,6 +1546,9 @@ processConnectionReason game connectionReason model =
 
                                 forName ->
                                     PublicFor forName
+                    , maxPlayers = settings.maxPlayers
+                    , winningPoints = settings.winningPoints
+                    , seedInt = Time.posixToMillis model.time
                     , restoreState = Nothing
                     , maybeGameid = Nothing
                     }
@@ -1561,8 +1558,6 @@ processConnectionReason game connectionReason model =
                 JoinReq
                     { gameid = gameid
                     , name = model.settings.name
-                    , isRestore = False
-                    , inCrowd = inCrowd
                     }
 
         PublicGamesConnection ->
@@ -1588,22 +1583,26 @@ processConnectionReason game connectionReason model =
             let
                 player =
                     localGame.player
-
-                name =
-                    playerName player localGame
             in
-            if name == "" then
-                Cmd.none
+            case playerName player localGame of
+                Nothing ->
+                    Cmd.none
 
-            else
-                send isLocal interface <|
-                    NewReq
-                        { name = name
-                        , player = player
-                        , publicType = NotPublic
-                        , restoreState = Just localGame.gameState
-                        , maybeGameid = Just localGame.gameid
-                        }
+                Just name ->
+                    let
+                        gameState =
+                            localGame.gameState
+                    in
+                    send isLocal interface <|
+                        NewReq
+                            { name = name
+                            , maxPlayers = gameState.maxPlayers
+                            , winningPoints = gameState.winningPoints
+                            , seedInt = 0 --not used
+                            , publicType = NotPublic
+                            , restoreState = Just gameState
+                            , maybeGameid = Just localGame.gameid
+                            }
 
         JoinRestoredGameConnection gameid ->
             -- Errors are generated in ErrorRsp handler,
@@ -1625,7 +1624,6 @@ processConnectionReason game connectionReason model =
                             JoinReq
                                 { gameid = gameid
                                 , name = name
-                                , isRestore = True
                                 }
 
 
@@ -2008,7 +2006,7 @@ updateInternal msg model =
                         (send model.game.isLocal model.game.interface <|
                             PlayReq
                                 { playerid = game.playerid
-                                , placement = ChooseNew game.player
+                                , placement = ChooseNew
                                 }
                         )
 

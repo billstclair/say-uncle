@@ -185,6 +185,8 @@ type alias Size =
 
 type alias Settings =
     { name : String
+    , maxPlayers : Int
+    , winningPoints : Int
     , isPublic : Bool
     , forName : String
     , hideTitle : Bool
@@ -194,6 +196,8 @@ type alias Settings =
 emptySettings : Settings
 emptySettings =
     { name = ""
+    , maxPlayers = 3
+    , winningPoints = 10
     , isPublic = False
     , forName = ""
     , hideTitle = False
@@ -202,7 +206,6 @@ emptySettings =
 
 type alias SavedModel =
     { page : Page
-    , chooseFirst : Player
     , gameid : String
     , settings : Settings
     , styleType : StyleType

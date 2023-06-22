@@ -123,7 +123,6 @@ encodeSavedModel : SavedModel -> Value
 encodeSavedModel model =
     JE.object
         [ ( "page", encodePage model.page )
-        , ( "chooseFirst", encodePlayer model.chooseFirst )
         , ( "gameid", JE.string model.gameid )
         , ( "settings", encodeSettings model.settings )
         , ( "styleType", encodeStyleType model.styleType )
@@ -141,7 +140,6 @@ savedModelDecoder : Decoder SavedModel
 savedModelDecoder =
     JD.succeed SavedModel
         |> optional "page" pageDecoder MainPage
-        |> required "chooseFirst" playerDecoder
         |> optional "gameid" JD.string ""
         |> optional "settings" settingsDecoder Types.emptySettings
         |> optional "styleType" styleTypeDecoder LightStyle
@@ -486,9 +484,11 @@ boardDecoder =
 
 
 encodeSettings : Settings -> Value
-encodeSettings { name, isPublic, forName, hideTitle } =
+encodeSettings { name, maxPlayers, winningPoints, isPublic, forName, hideTitle } =
     JE.object
         [ ( "name", JE.string name )
+        , ( "maxPlayers", JE.int maxPlayers )
+        , ( "winningPoints", JE.int winningPoints )
         , ( "isPublic", JE.bool isPublic )
         , ( "forName", JE.string forName )
         , ( "hideTitle", JE.bool hideTitle )
@@ -499,6 +499,8 @@ settingsDecoder : Decoder Settings
 settingsDecoder =
     JD.succeed Settings
         |> required "name" JD.string
+        |> required "maxPlayers" JD.int
+        |> required "winningPoints" JD.int
         |> optional "isPublic" JD.bool False
         |> optional "forName" JD.string ""
         |> required "hideTitle" JD.bool
