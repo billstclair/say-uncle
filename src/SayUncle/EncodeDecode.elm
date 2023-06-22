@@ -15,19 +15,19 @@ module SayUncle.EncodeDecode exposing
     , cardToString
     , cardsToString
     , decodeSavedModel
+    , encodeGame
     , encodeGameState
     , encodeMessageForLog
-    , encodeNamedGame
     , encodePublicGameAndPlayers
     , encodeSavedModel
     , encodeWithTimestamp
     , frameworkToPublicGame
+    , gameDecoder
     , gameStateDecoder
     , messageDecoder
     , messageEncoder
     , messageEncoderWithPrivate
     , messageToLogMessage
-    , namedGameDecoder
     , publicGameAndPlayersDecoder
     , publicGameToFramework
     , stringToBoard
@@ -54,11 +54,12 @@ import SayUncle.Types as Types
         , BoardClick(..)
         , ChatSettings
         , Choice(..)
+        , Game
+        , GameInterface
         , GameState
         , InitialBoard
         , Message(..)
         , MessageForLog(..)
-        , NamedGame
         , Page(..)
         , Player
         , PlayerNames
@@ -69,7 +70,6 @@ import SayUncle.Types as Types
         , RowCol
         , SavedModel
         , Score
-        , ServerInterface
         , Settings
         , Socket
         , State(..)
@@ -1611,8 +1611,8 @@ messageDecoder ( reqrsp, plist ) =
                     Err <| "Unknown Rsp: " ++ msg
 
 
-encodeNamedGame : NamedGame msg -> Value
-encodeNamedGame game =
+encodeGame : Game -> Value
+encodeGame game =
     JE.object
         [ ( "gameid", JE.string game.gameid )
         , ( "playerIds", JE.dict identity JE.int game.playerIds )
@@ -1625,9 +1625,9 @@ encodeNamedGame game =
         ]
 
 
-namedGameDecoder : ServerInterface msg -> Decoder (NamedGame msg)
-namedGameDecoder proxyServer =
-    JD.succeed NamedGame
+gameDecoder : GameInterface -> Decoder Game
+gameDecoder proxyServer =
+    JD.succeed Game
         |> required "gameid" JD.string
         |> required "playerIds" (JD.dict JD.int)
         |> required "gameState" gameStateDecoder

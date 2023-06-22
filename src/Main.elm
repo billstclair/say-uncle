@@ -93,19 +93,27 @@ import Markdown
 import PortFunnel.LocalStorage as LocalStorage exposing (Label)
 import PortFunnel.Notification as Notification exposing (Permission(..))
 import PortFunnel.WebSocket as WebSocket exposing (Response(..))
-import PortFunnels exposing (FunnelDict, Handler(..), State)
+import PortFunnels exposing (FunnelDict, Handler(..))
 import Random exposing (Seed)
 import SayUncle.Board as Board
 import SayUncle.EncodeDecode as ED
 import SayUncle.Interface as Interface
 import SayUncle.Types as Types
     exposing
-        ( Board
+        ( AskYesNo(..)
+        , Board
         , BoardClick(..)
+        , ChatSettings
         , Choice(..)
+        , ConnectionReason(..)
+        , ConnectionSpec
+        , Game
+        , GameInterface
         , GameState
         , Message(..)
-        , NamedGame
+        , MessageQueueEntry
+        , Model
+        , Msg(..)
         , Page(..)
         , Participant
         , Player
@@ -174,81 +182,6 @@ port onVisibilityChange : (Bool -> msg) -> Sub msg
 port playAudio : String -> Cmd msg
 
 
-type alias ServerInterface =
-    Types.ServerInterface Msg
-
-
-type ConnectionReason
-    = StartGameConnection
-    | JoinGameConnection GameId Bool
-    | PublicGamesConnection
-    | StatisticsConnection
-    | UpdateConnection PlayerId
-    | RestoreGameConnection Game
-    | JoinRestoredGameConnection GameId
-
-
-type alias ConnectionSpec =
-    { connectionReason : ConnectionReason
-    }
-
-
-type alias ChatSettings =
-    Types.ChatSettings Msg
-
-
-type AskYesNo a
-    = AskAsk
-    | AskYes a
-    | AskNo
-
-
-type alias Game =
-    NamedGame Msg
-
-
-type alias MessageQueueEntry =
-    { isLocal : Bool
-    , isSend : Bool
-    , message : Message
-    }
-
-
-type alias Model =
-    { tick : Posix
-    , zone : Zone
-    , game : Game
-    , gameDict : Dict String Game
-    , chatSettings : ChatSettings
-    , connectionSpecQueue : Fifo ConnectionSpec
-    , funnelState : State
-    , key : Key
-    , windowSize : ( Int, Int )
-    , started : Bool --True when persistent storage is available
-    , error : Maybe String
-    , publicGames : List PublicGameAndPlayers
-    , time : Posix
-    , requestedNew : Bool
-    , reallyClearStorage : Bool
-    , statistics : Maybe Statistics
-    , statisticsTimes : ( Maybe Int, Maybe Int )
-    , notificationAvailable : Maybe Bool
-    , notificationPermission : Maybe Permission
-    , visible : Bool
-    , soundFile : Maybe String
-    , messageQueue : Fifo MessageQueueEntry
-    , showMessageQueue : Bool
-
-    -- persistent below here
-    , page : Page
-    , gameid : String
-    , settings : Settings
-    , styleType : StyleType
-    , notificationsEnabled : Bool
-    , soundEnabled : Bool
-    }
-
-
 isPlaying : Model -> Bool
 isPlaying model =
     let
@@ -259,48 +192,6 @@ isPlaying model =
             game.gameState
     in
     game.isLive && Dict.size gameState.players == gameState.maxPlayers
-
-
-type Msg
-    = Noop
-    | Tick Posix
-    | IncomingMessage Bool ServerInterface Message
-    | RecordMessage Bool Bool Message
-    | SetIsLocal Bool
-    | SetDarkMode Bool
-    | SetName String
-    | SetIsPublic Bool
-    | SetForName String
-    | SetServerUrl String
-    | SetGameid String
-    | SetPage Page
-    | SetHideTitle Bool
-    | NewGame
-    | StartGame
-    | Join
-    | JoinGame GameId
-    | Disconnect
-    | SetShowMessageQueue Bool
-    | SetNotificationsEnabled Bool
-    | SetSoundEnabled Bool
-    | InitialBoard
-    | Reload
-    | MaybeClearStorage
-    | ClearStorage
-    | Click BoardClick
-    | ChatUpdate ChatSettings (Cmd Msg)
-    | ChatSend String ChatSettings
-    | ChatClear
-    | PlaySound String
-    | DelayedAction (Model -> ( Model, Cmd Msg )) Posix
-    | SetZone Zone
-    | WindowResize Int Int
-    | VisibilityChange Bool
-    | HandleUrlRequest UrlRequest
-    | HandleUrlChange Url
-    | DoConnectedResponse
-    | RestoreSubscriptions
-    | Process Value
 
 
 main =
@@ -355,7 +246,7 @@ fullProcessor =
     ServerInterface.fullMessageProcessor encodeDecode Interface.proxyMessageProcessor
 
 
-updateServerState : (ServerState -> ServerState) -> ServerInterface -> ServerInterface
+updateServerState : (ServerState -> ServerState) -> GameInterface -> GameInterface
 updateServerState updater serverInterface =
     let
         (ServerInterface interface) =
@@ -379,13 +270,13 @@ updateServerState updater serverInterface =
                 }
 
 
-updateServerTime : Posix -> ServerInterface -> ServerInterface
+updateServerTime : Posix -> GameInterface -> GameInterface
 updateServerTime posix serverInterface =
     serverInterface
         |> updateServerState (\state -> { state | time = posix })
 
 
-updateServerSeed : Maybe Seed -> ServerInterface -> ServerInterface
+updateServerSeed : Maybe Seed -> GameInterface -> GameInterface
 updateServerSeed maybeSeed serverInterface =
     case maybeSeed of
         Nothing ->
@@ -396,7 +287,7 @@ updateServerSeed maybeSeed serverInterface =
                 |> updateServerState (\state -> { state | seed = seed })
 
 
-proxyServer : Maybe Seed -> ServerInterface
+proxyServer : Maybe Seed -> GameInterface
 proxyServer seed =
     ServerInterface.makeProxyServer fullProcessor (IncomingMessage True)
         |> updateServerSeed seed
@@ -522,12 +413,15 @@ modelSeed model =
 init : Value -> url -> Key -> ( Model, Cmd Msg )
 init flags url key =
     let
+        game : Game
         game =
             initialGame Nothing
 
+        model : Model
         model =
             { tick = zeroTick
             , zone = Time.utc
+            , delayTime = zeroTick
             , game = game
             , gameDict = Dict.empty
             , chatSettings =
@@ -539,7 +433,6 @@ init flags url key =
             , started = False
             , error = Nothing
             , publicGames = []
-            , time = Time.millisToPosix 0
             , requestedNew = False
             , reallyClearStorage = False
             , statistics = Nothing
@@ -698,7 +591,7 @@ handleGetGameResponse _ value model =
             Debug.log "handleGetGameResponse"
     in
     case
-        JD.decodeValue (ED.namedGameDecoder <| proxyServer (modelSeed model))
+        JD.decodeValue (ED.gameDecoder <| proxyServer (modelSeed model))
             value
     of
         Err _ ->
@@ -867,7 +760,7 @@ localizedPlayerName player game =
                 "You (" ++ name ++ ")"
 
 
-incomingMessage : ServerInterface -> Message -> Model -> ( Model, Cmd Msg )
+incomingMessage : GameInterface -> Message -> Model -> ( Model, Cmd Msg )
 incomingMessage interface message mdl =
     let
         messageLog =
@@ -943,7 +836,7 @@ If the `Maybe Game` in the result is not `Nothing`, then the `Game` was changed,
 and needs to be persisted by `incomingMessage`. Otherwise, it was NOT changed.
 
 -}
-incomingMessageInternal : ServerInterface -> Maybe Game -> Message -> Model -> ( Maybe Game, ( Model, Cmd Msg ) )
+incomingMessageInternal : GameInterface -> Maybe Game -> Message -> Model -> ( Maybe Game, ( Model, Cmd Msg ) )
 incomingMessageInternal interface maybeGame message model =
     let
         withRequiredGame : GameId -> (Game -> ( Maybe Game, ( Model, Cmd Msg ) )) -> ( Maybe Game, ( Model, Cmd Msg ) )
@@ -1291,7 +1184,7 @@ incomingMessageInternal interface maybeGame message model =
                             ElmChat.addLineSpec model.chatSettings <|
                                 ElmChat.makeLineSpec text
                                     (Just name)
-                                    (Just model.time)
+                                    (Just model.tick)
                     in
                     ( Nothing
                     , { model
@@ -1325,7 +1218,7 @@ setPage page =
     Task.perform SetPage <| Task.succeed page
 
 
-notificationHandler : Notification.Response -> State -> Model -> ( Model, Cmd Msg )
+notificationHandler : Notification.Response -> PortFunnels.State -> Model -> ( Model, Cmd Msg )
 notificationHandler response state mdl =
     let
         model =
@@ -1415,7 +1308,7 @@ notificationCmd message =
         |> Notification.send (getCmdPort Notification.moduleName ())
 
 
-socketHandler : Response -> State -> Model -> ( Model, Cmd Msg )
+socketHandler : Response -> PortFunnels.State -> Model -> ( Model, Cmd Msg )
 socketHandler response state mdl =
     let
         model =
@@ -1548,7 +1441,7 @@ processConnectionReason game connectionReason model =
                                     PublicFor forName
                     , maxPlayers = settings.maxPlayers
                     , winningPoints = settings.winningPoints
-                    , seedInt = Time.posixToMillis model.time
+                    , seedInt = Time.posixToMillis model.tick
                     , restoreState = Nothing
                     , maybeGameid = Nothing
                     }
@@ -2056,7 +1949,7 @@ updateInternal msg model =
             { model | soundEnabled = bool }
                 |> withNoCmd
 
-        InitialBoard ->
+        MakeInitialBoard ->
             let
                 game2 =
                     { game
@@ -2125,7 +2018,7 @@ updateInternal msg model =
                     |> withCmd (playAudio file)
 
         DelayedAction updater time ->
-            updater { model | time = time }
+            updater { model | delayTime = time }
 
         SetZone zone ->
             let
@@ -2230,7 +2123,7 @@ delayedAction updater =
     Task.perform (DelayedAction updater) Time.now
 
 
-makeWebSocketServer : Model -> ServerInterface
+makeWebSocketServer : Model -> GameInterface
 makeWebSocketServer model =
     WebSocketFramework.makeServer
         (getCmdPort WebSocket.moduleName ())
@@ -2360,7 +2253,7 @@ disconnect model =
             ]
 
 
-send : Bool -> ServerInterface -> Message -> Cmd Msg
+send : Bool -> GameInterface -> Message -> Cmd Msg
 send interfaceIsLocal interface message =
     let
         logMessage =
@@ -2419,7 +2312,7 @@ getChat =
 
 putGame : Game -> Cmd Msg
 putGame game =
-    (Just <| ED.encodeNamedGame game)
+    (Just <| ED.encodeGame game)
         |> put pk.game
 
 

@@ -11,15 +11,22 @@
 
 
 module SayUncle.Types exposing
-    ( Board
+    ( AskYesNo(..)
+    , Board
     , BoardClick(..)
     , ChatSettings
     , Choice(..)
+    , ConnectionReason(..)
+    , ConnectionSpec
+    , Game
+    , GameInterface
     , GameState
     , InitialBoard
     , Message(..)
     , MessageForLog(..)
-    , NamedGame
+    , MessageQueueEntry
+    , Model
+    , Msg(..)
     , Page(..)
     , Participant
     , Player
@@ -31,7 +38,6 @@ module SayUncle.Types exposing
     , RowCol
     , SavedModel
     , Score
-    , ServerInterface
     , ServerState
     , Settings
     , Size
@@ -62,13 +68,20 @@ module SayUncle.Types exposing
     )
 
 import Array exposing (Array)
+import Browser exposing (UrlRequest(..))
+import Browser.Navigation as Navigation exposing (Key)
 import Cards exposing (Card)
 import Deck exposing (ShuffledDeck)
 import Dict exposing (Dict)
 import ElmChat
+import Fifo exposing (Fifo)
+import Json.Decode as JD exposing (Decoder, Value)
+import PortFunnel.Notification as Notification exposing (Permission(..))
+import PortFunnels
 import Random exposing (Seed)
 import Set exposing (Set)
-import Time exposing (Posix)
+import Time exposing (Posix, Zone)
+import Url exposing (Url)
 import WebSocketFramework.Types
     exposing
         ( GameId
@@ -679,15 +692,15 @@ statisticsKeyOrder =
     ]
 
 
-type alias ServerInterface msg =
-    WebSocketFramework.Types.ServerInterface GameState Player Message msg
+type alias GameInterface =
+    WebSocketFramework.Types.ServerInterface GameState Player Message Msg
 
 
-type alias ChatSettings msg =
-    ElmChat.Settings msg
+type alias ChatSettings =
+    ElmChat.Settings Msg
 
 
-type alias NamedGame msg =
+type alias Game =
     { gameid : GameId
     , playerIds : Dict PlayerId Player --used in local mode
     , gameState : GameState
@@ -699,5 +712,115 @@ type alias NamedGame msg =
 
     -- Not persistent
     , interfaceIsProxy : Bool
-    , interface : ServerInterface msg
+    , interface : GameInterface
     }
+
+
+
+{--I usually put these in Main.elm, but UI.elm is split out, so they're shared now.
+--}
+
+
+type ConnectionReason
+    = StartGameConnection
+    | JoinGameConnection GameId Bool
+    | PublicGamesConnection
+    | StatisticsConnection
+    | UpdateConnection PlayerId
+    | RestoreGameConnection Game
+    | JoinRestoredGameConnection GameId
+
+
+type alias ConnectionSpec =
+    { connectionReason : ConnectionReason
+    }
+
+
+type AskYesNo a
+    = AskAsk
+    | AskYes a
+    | AskNo
+
+
+type alias MessageQueueEntry =
+    { isLocal : Bool
+    , isSend : Bool
+    , message : Message
+    }
+
+
+type alias Model =
+    { tick : Posix
+    , zone : Zone
+    , delayTime : Posix
+    , game : Game
+    , gameDict : Dict String Game
+    , chatSettings : ChatSettings
+    , connectionSpecQueue : Fifo ConnectionSpec
+    , funnelState : PortFunnels.State
+    , key : Key
+    , windowSize : ( Int, Int )
+    , started : Bool --True when persistent storage is available
+    , error : Maybe String
+    , publicGames : List PublicGameAndPlayers
+    , requestedNew : Bool
+    , reallyClearStorage : Bool
+    , statistics : Maybe Statistics
+    , statisticsTimes : ( Maybe Int, Maybe Int )
+    , notificationAvailable : Maybe Bool
+    , notificationPermission : Maybe Permission
+    , visible : Bool
+    , soundFile : Maybe String
+    , messageQueue : Fifo MessageQueueEntry
+    , showMessageQueue : Bool
+
+    -- persistent below here
+    , page : Page
+    , gameid : String
+    , settings : Settings
+    , styleType : StyleType
+    , notificationsEnabled : Bool
+    , soundEnabled : Bool
+    }
+
+
+type Msg
+    = Noop
+    | Tick Posix
+    | IncomingMessage Bool GameInterface Message
+    | RecordMessage Bool Bool Message
+    | SetIsLocal Bool
+    | SetDarkMode Bool
+    | SetName String
+    | SetIsPublic Bool
+    | SetForName String
+    | SetServerUrl String
+    | SetGameid String
+    | SetPage Page
+    | SetHideTitle Bool
+    | NewGame
+    | StartGame
+    | Join
+    | JoinGame GameId
+    | Disconnect
+    | SetShowMessageQueue Bool
+    | SetNotificationsEnabled Bool
+    | SetSoundEnabled Bool
+    | MakeInitialBoard
+    | Reload
+    | MaybeClearStorage
+    | ClearStorage
+    | Click BoardClick
+    | ChatUpdate ChatSettings (Cmd Msg)
+    | ChatSend String ChatSettings
+    | ChatClear
+    | PlaySound String
+    | DelayedAction (Model -> ( Model, Cmd Msg )) Posix
+    | SetZone Zone
+    | WindowResize Int Int
+    | VisibilityChange Bool
+    | HandleUrlRequest UrlRequest
+    | HandleUrlChange Url
+    | DoConnectedResponse
+    | RestoreSubscriptions
+    | Process Value

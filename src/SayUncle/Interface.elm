@@ -235,7 +235,7 @@ generalMessageProcessor isProxyServer state message =
     ( newState3, response )
 
 
-logInterfaceSeed : String -> Types.ServerInterface msg -> Types.ServerInterface msg
+logInterfaceSeed : String -> Types.GameInterface -> Types.GameInterface
 logInterfaceSeed prefix (ServerInterface interface) =
     case interface.state of
         Nothing ->
