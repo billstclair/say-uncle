@@ -785,6 +785,7 @@ playReq isProxyServer state message playerid placement gameid gameState player =
                         ( ServerInterface.updateGame gameid
                             nextGameState
                             state
+                            |> populateEndOfGameStatistics nextGameState
                         , Just <|
                             (if nextGameState.winner == NoWinner then
                                 PlayRsp
@@ -976,6 +977,7 @@ playReq isProxyServer state message playerid placement gameid gameState player =
                     ( ServerInterface.updateGame gameid
                         newGameState
                         state
+                        |> populateEndOfGameStatistics newGameState
                     , Just <|
                         GameOverRsp
                             { gameid = gameid
@@ -1195,28 +1197,40 @@ updateScore gameState =
                                         , ( won, 1 )
                                         ]
 
-            folder : ( Player, Int ) -> Score -> Score
-            folder ( player, delta ) score1 =
+            winningPoints =
+                gameState.winningPoints
+
+            folder : ( Player, Int ) -> ( Score, Maybe Player ) -> ( Score, Maybe Player )
+            folder ( player, delta ) ( score1, matchWinner ) =
                 let
                     points =
-                        case Dict.get player score1.points of
-                            Nothing ->
-                                0
+                        delta
+                            + (case Dict.get player score1.points of
+                                Nothing ->
+                                    0
 
-                            Just ppp ->
-                                ppp
+                                Just ppp ->
+                                    ppp
+                              )
                 in
-                { score1
+                ( { score1
                     | points =
-                        Dict.insert player (points + delta) score1.points
-                }
+                        Dict.insert player points score1.points
+                  }
+                , if points >= winningPoints then
+                    Just player
 
-            score2 =
-                List.foldl folder score deltas
+                  else
+                    matchWinner
+                )
+
+            ( score2, matchWinner2 ) =
+                List.foldl folder ( score, gameState.matchWinner ) deltas
         in
         { gameState
             | score =
                 { score2
                     | games = score2.games + 1
                 }
+            , matchWinner = matchWinner2
         }

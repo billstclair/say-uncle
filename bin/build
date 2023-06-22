@@ -2,7 +2,7 @@
 
 which=$1
 if [[ -z $which ]]; then which='local';fi
-cp src/Agog/WhichServer.elm.$which src/Agog/WhichServer.elm
+cp src/SayUncle/WhichServer.elm.$which src/SayUncle/WhichServer.elm
 
 elm make src/Main.elm --output site/elm.js
 bin/safari-patch

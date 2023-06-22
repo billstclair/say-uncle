@@ -466,7 +466,6 @@ initialGame maybeSeed =
     in
     { gameid = ""
     , playerIds = Dict.empty
-    , playerWins = Dict.empty
     , gameState = Interface.emptyGameState Types.emptyPlayerNames 0 0 seed
     , isLocal = False
     , serverUrl = WhichServer.serverUrl
@@ -1057,7 +1056,7 @@ incomingMessageInternal interface maybeGame message model =
 
         LeaveRsp { gameid, participant, name } ->
             -- TODO
-            -- If game.local, need to remove player from game.playerIds & game.playerWins.
+            -- If game.local, need to remove player from game.playerIds
             -- Also, update nextPlayer (and Interface.nextPlayer) to
             -- skip non-existent player numbers in live games.
             let
@@ -1179,9 +1178,7 @@ incomingMessageInternal interface maybeGame message model =
             withRequiredGame gameid
                 (\game ->
                     ( Just
-                        ({ game | gameState = gameState }
-                            |> updatePlayerWins
-                        )
+                        { game | gameState = gameState }
                     , model |> withNoCmd
                     )
                 )
@@ -1326,49 +1323,6 @@ incomingMessageInternal interface maybeGame message model =
 getScore : Player -> GameState -> Int
 getScore player gameState =
     Maybe.withDefault 0 <| Dict.get player gameState.playerWins
-
-
-updatePlayerWins : Game -> Game
-updatePlayerWins game =
-    let
-        gameState =
-            game.gameState
-
-        playerWins : List ( Player, Int )
-        playerWins =
-            case gameState.winner of
-                NoWinner ->
-                    []
-
-                StockUsedWinner p ->
-                    [ ( p, 1 ) ]
-
-                SayUncleWinner { saidUncle, won } ->
-                    if saidUncle == won then
-                        [ ( saidUncle, 2 ) ]
-
-                    else if getScore saidUncle gameState > 0 then
-                        [ ( saidUncle, -1 ), ( won, 1 ) ]
-
-                    else
-                        [ ( won, 2 ) ]
-
-        folder : ( Player, Int ) -> Dict Player Int -> Dict Player Int
-        folder ( p, d ) wins =
-            let
-                w =
-                    case Dict.get p wins of
-                        Nothing ->
-                            d
-
-                        Just i ->
-                            d + i
-            in
-            Dict.insert p wins w
-    in
-    { game
-        | playerWins = List.foldl folder game.playerWins playerWins
-    }
 
 
 setPage : Page -> Cmd Msg
