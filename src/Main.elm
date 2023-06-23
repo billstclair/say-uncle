@@ -18,74 +18,13 @@ import Browser.Events as Events
 import Browser.Navigation as Navigation exposing (Key)
 import Char
 import Cmd.Extra exposing (withCmd, withCmds, withNoCmd)
-import DateFormat
-import DateFormat.Relative
 import Dict exposing (Dict)
 import Dict.Extra as DE
 import ElmChat exposing (LineSpec(..), defaultExtraAttributes)
 import Fifo exposing (Fifo)
-import FormatNumber exposing (format)
-import FormatNumber.Locales exposing (usLocale)
-import Html
-    exposing
-        ( Attribute
-        , Html
-        , a
-        , audio
-        , blockquote
-        , button
-        , div
-        , embed
-        , fieldset
-        , h1
-        , h2
-        , h3
-        , h4
-        , img
-        , input
-        , label
-        , optgroup
-        , option
-        , p
-        , select
-        , source
-        , span
-        , table
-        , td
-        , text
-        , textarea
-        , tr
-        )
-import Html.Attributes as Attributes
-    exposing
-        ( align
-        , alt
-        , autofocus
-        , autoplay
-        , checked
-        , class
-        , cols
-        , colspan
-        , disabled
-        , height
-        , href
-        , id
-        , name
-        , placeholder
-        , readonly
-        , rows
-        , selected
-        , size
-        , src
-        , style
-        , target
-        , title
-        , type_
-        , value
-        , width
-        )
-import Html.Events exposing (keyCode, on, onCheck, onClick, onInput)
-import Html.Lazy as Lazy
+import Html exposing (Attribute, Html, text)
+import Html.Attributes as Attributes exposing (style)
+import Html.Events exposing (keyCode, on)
 import Json.Decode as JD exposing (Decoder, Value)
 import Json.Encode as JE
 import List.Extra as LE

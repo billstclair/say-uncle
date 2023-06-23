@@ -12,6 +12,109 @@
 
 module SayUncle.UI exposing (view)
 
+import DateFormat
+import DateFormat.Relative
+import Dict exposing (Dict)
+import FormatNumber exposing (format)
+import FormatNumber.Locales exposing (usLocale)
+import Html
+    exposing
+        ( Attribute
+        , Html
+        , a
+        , audio
+        , blockquote
+        , button
+        , div
+        , embed
+        , fieldset
+        , h1
+        , h2
+        , h3
+        , h4
+        , img
+        , input
+        , label
+        , optgroup
+        , option
+        , p
+        , select
+        , source
+        , span
+        , table
+        , td
+        , text
+        , textarea
+        , tr
+        )
+import Html.Attributes as Attributes
+    exposing
+        ( align
+        , alt
+        , autofocus
+        , autoplay
+        , checked
+        , class
+        , cols
+        , colspan
+        , disabled
+        , height
+        , href
+        , id
+        , name
+        , placeholder
+        , readonly
+        , rows
+        , selected
+        , size
+        , src
+        , style
+        , target
+        , title
+        , type_
+        , value
+        , width
+        )
+import Html.Events exposing (keyCode, on, onCheck, onClick, onInput)
+import Html.Lazy as Lazy
+import List.Extra as LE
+import SayUncle.Types as Types
+    exposing
+        ( AskYesNo(..)
+        , Board
+        , BoardClick(..)
+        , ChatSettings
+        , Choice(..)
+        , ConnectionReason(..)
+        , ConnectionSpec
+        , Game
+        , GameInterface
+        , GameState
+        , Message(..)
+        , MessageQueueEntry
+        , Model
+        , Msg(..)
+        , Page(..)
+        , Participant
+        , Player
+        , PlayerNames
+        , PublicGame
+        , PublicGameAndPlayers
+        , PublicType(..)
+        , RowCol
+        , SavedModel
+        , Score
+        , ServerState
+        , Settings
+        , StatisticsKeys
+        , Style
+        , StyleType(..)
+        , WinReason(..)
+        , Winner(..)
+        , statisticsKeys
+        )
+import Time exposing (Month(..), Posix, Zone)
+
 
 br : Html Msg
 br =
@@ -189,84 +292,28 @@ mainPage bsize model =
         gameState =
             game.gameState
 
-        { white, black } =
+        players =
             liveGameState.players
 
-        hasBothPlayers =
-            white /= "" && black /= ""
-
-        inCrowd =
-            game.watcherName /= Nothing
-
-        ( ( isReviewingOrArchiving, isArchiving ), liveGame ) =
-            case model.showArchive of
-                Nothing ->
-                    case model.showMove of
-                        Nothing ->
-                            ( ( False, False ), game )
-
-                        Just ( g, _ ) ->
-                            ( ( True, False ), g )
-
-                Just ( g, _ ) ->
-                    ( ( True, True ), g )
+        hasAllPlayers =
+            Dict.size players == gameState.maxPlayers
 
         score =
-            liveGameState.score
-
-        liveGameState =
-            liveGame.gameState
-
-        reviewingMessage =
-            if isArchiving then
-                "You are reviewing an archived game. Click \"End archive\" to resume play."
-
-            else
-                "You are reviewing the game. Click \"End review\" to resume play."
+            gameState.score
 
         currentPlayer =
-            if not liveGame.isLocal && liveGame.watcherName == Nothing then
-                Just liveGame.player
-
-            else
-                Just liveGameState.whoseTurn
-
-        rotated =
-            case model.rotate of
-                RotateWhiteDown ->
-                    False
-
-                RotatePlayerDown ->
-                    currentPlayer == Just BlackPlayer
-
-        { corruptJumped, makeHulk } =
-            model.chooseMoveOptionsUI
+            Just gameState.whoseTurn
 
         ( playing, message, yourTurn ) =
-            if not liveGame.isLive then
-                if isReviewingOrArchiving then
-                    ( False
-                    , ""
-                    , False
-                    )
-
-                else
-                    ( False
-                    , "Enter \"Your Name\" and either click \"Start Session\" or enter \"Session ID\" and click \"Join\""
-                    , True
-                    )
-
-            else if white == "" || black == "" then
+            if not game.isLive then
                 ( False
-                , let
-                    waitingFor =
-                        if white == "" then
-                            "White"
+                , "Enter \"Your Name\" and either click \"Start Session\" or enter \"Session ID\" and click \"Join\""
+                , True
+                )
 
-                        else
-                            "Black"
-                  in
-                  "Waiting for " ++ waitingFor ++ " to join"
+            else if not hasAllPlayers then
+                ( False
+                , "Waiting for other players to join"
                 , False
                 )
 
@@ -275,11 +322,11 @@ mainPage bsize model =
                     winString player reason =
                         let
                             name =
-                                localizedPlayerName player liveGame
+                                localizedPlayerName player game
                         in
                         name ++ " won " ++ winReasonToDescription reason ++ "!"
                 in
-                case liveGameState.winner of
+                case gameState.winner of
                     WhiteWinner reason ->
                         ( False, winString WhitePlayer reason, False )
 
@@ -309,8 +356,8 @@ mainPage bsize model =
                                     )
 
                                 else if
-                                    not liveGame.isLocal
-                                        && (liveGameState.whoseTurn /= game.player)
+                                    not game.isLocal
+                                        && (gameState.whoseTurn /= game.player)
                                 then
                                     let
                                         otherName =
@@ -330,16 +377,16 @@ mainPage bsize model =
 
                                 else
                                     ( True
-                                    , case liveGameState.selected of
+                                    , case gameState.selected of
                                         Nothing ->
-                                            if liveGameState.jumperLocations == [] then
+                                            if gameState.jumperLocations == [] then
                                                 "choose a piece to move"
 
                                             else
                                                 "choose one of the selected jumper pieces"
 
                                         Just _ ->
-                                            case liveGameState.legalMoves of
+                                            case gameState.legalMoves of
                                                 NoMoves ->
                                                     "selected piece has no legal moves."
 
@@ -379,7 +426,7 @@ mainPage bsize model =
             Types.typeToStyle model.styleType
 
         messageStyles =
-            notificationStyles yourTurn playing liveGameState
+            notificationStyles yourTurn playing gameState
 
         movesSpan =
             let
@@ -526,8 +573,8 @@ mainPage bsize model =
               else
                 movesSpan
             , if
-                (liveGameState.winner /= NoWinner)
-                    || (liveGameState.moves == [] && liveGameState.players == Types.emptyPlayerNames)
+                (gameState.winner /= NoWinner)
+                    || (gameState.moves == [] && gameState.players == Types.emptyPlayerNames)
               then
                 text ""
 
@@ -570,7 +617,7 @@ mainPage bsize model =
 
               else
                 text ""
-            , if not liveGame.isLocal && liveGame.isLive then
+            , if not game.isLocal && game.isLive then
                 span []
                     [ if white == "" || black == "" then
                         br
@@ -624,7 +671,7 @@ mainPage bsize model =
               else
                 let
                     undoLen =
-                        List.length liveGameState.undoStates
+                        List.length gameState.undoStates
                 in
                 if undoLen == 0 then
                     text ""
@@ -724,13 +771,13 @@ mainPage bsize model =
                 movesSpan
             , let
                 { games, whiteWins, blackWins } =
-                    liveGameState.score
+                    gameState.score
 
                 yourWins =
-                    liveGame.yourWins
+                    game.yourWins
 
                 player =
-                    liveGame.player
+                    game.player
 
                 otherPlayer =
                     Types.otherPlayer player
@@ -741,16 +788,16 @@ mainPage bsize model =
               else
                 let
                     ( yourWinString, otherWinString ) =
-                        if liveGame.isLocal then
+                        if game.isLocal then
                             ( "White won " ++ String.fromInt whiteWins
                             , "Black won " ++ String.fromInt blackWins
                             )
 
                         else
-                            ( localizedPlayerName player liveGame
+                            ( localizedPlayerName player game
                                 ++ " won "
                                 ++ String.fromInt yourWins
-                            , localizedPlayerName otherPlayer liveGame
+                            , localizedPlayerName otherPlayer game
                                 ++ " won "
                                 ++ String.fromInt (games - yourWins)
                             )
@@ -795,10 +842,10 @@ mainPage bsize model =
             , b "Local: "
             , input
                 [ type_ "checkbox"
-                , checked liveGame.isLocal
+                , checked game.isLocal
                 , onCheck SetIsLocal
                 , disabled <|
-                    (not liveGame.isLocal && liveGame.isLive)
+                    (not game.isLocal && game.isLive)
                         || showingArchiveOrMove model
                 ]
                 []
@@ -1834,7 +1881,7 @@ movesPage bsize model =
                     , List.length g.gameState.moves
                     )
 
-        liveGame =
+        game =
             case model.showArchive of
                 Just ( g, _ ) ->
                     g
@@ -1848,7 +1895,7 @@ movesPage bsize model =
                             g
 
         inCrowd =
-            liveGame.watcherName /= Nothing
+            game.watcherName /= Nothing
     in
     rulesDiv False
         [ rulesDiv True
@@ -1875,18 +1922,18 @@ movesPage bsize model =
                     , br
                     , text winString
                     , endReview
-                    , if not liveGame.isLive || liveGame.gameState.winner /= NoWinner then
+                    , if not game.isLive || game.gameState.winner /= NoWinner then
                         text ""
 
                       else
                         let
                             whoseTurn =
-                                liveGame.gameState.whoseTurn
+                                game.gameState.whoseTurn
 
                             yourTurn =
-                                not inCrowd && whoseTurn == liveGame.player
+                                not inCrowd && whoseTurn == game.player
                         in
-                        span (notificationStyles yourTurn True liveGame.gameState)
+                        span (notificationStyles yourTurn True game.gameState)
                             [ if model.showArchive == Nothing then
                                 text ""
 
@@ -1901,7 +1948,7 @@ movesPage bsize model =
                                     [ text <| chars.watchingMessage ++ "."
                                     , br
                                     , text "It's "
-                                    , text <| playerName whoseTurn liveGame
+                                    , text <| playerName whoseTurn game
                                     , text "'s turn to move."
                                     ]
 
@@ -1911,10 +1958,10 @@ movesPage bsize model =
                               else
                                 let
                                     players =
-                                        liveGame.gameState.players
+                                        game.gameState.players
 
                                     name =
-                                        if liveGame.player == WhitePlayer then
+                                        if game.player == WhitePlayer then
                                             players.black
 
                                         else
