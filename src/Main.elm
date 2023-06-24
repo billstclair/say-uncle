@@ -682,21 +682,8 @@ savedModelToModel savedModel model =
 
 playerName : Player -> Game -> Maybe String
 playerName player game =
+    -- TODO: Use UI.playerName
     Dict.get player game.gameState.players
-
-
-localizedPlayerName : Player -> Game -> String
-localizedPlayerName player game =
-    case playerName player game of
-        Nothing ->
-            ""
-
-        Just name ->
-            if name == "" || game.isLocal || player /= game.player then
-                name
-
-            else
-                "You (" ++ name ++ ")"
 
 
 incomingMessage : GameInterface -> Message -> Model -> ( Model, Cmd Msg )

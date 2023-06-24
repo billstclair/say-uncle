@@ -211,17 +211,11 @@ ids =
 winReasonToDescription : WinReason -> String
 winReasonToDescription reason =
     case reason of
-        WinByCapture ->
-            "by capture"
+        WinByStackUsed ->
+            "by stack exhausted"
 
-        WinBySanctum ->
-            "by sanctum"
-
-        WinByImmobilization ->
-            "by immobilization"
-
-        WinByResignation ->
-            "by resignation"
+        WinBySayUncle ->
+            "by Say Uncle"
 
 
 maybeNoText : String -> String
@@ -280,6 +274,25 @@ messageQueueDiv theStyle model =
             ]
 
 
+playerName : Player -> Game -> Maybe String
+playerName player game =
+    Dict.get player game.gameState.players
+
+
+localizedPlayerName : Player -> Game -> String
+localizedPlayerName player game =
+    case playerName player game of
+        Nothing ->
+            ""
+
+        Just name ->
+            if name == "" || game.isLocal || player /= game.player then
+                name
+
+            else
+                "You (" ++ name ++ ")"
+
+
 mainPage : Int -> Model -> Html Msg
 mainPage bsize model =
     let
@@ -301,9 +314,6 @@ mainPage bsize model =
         score =
             gameState.score
 
-        currentPlayer =
-            Just gameState.whoseTurn
-
         ( playing, message, yourTurn ) =
             if not game.isLive then
                 ( False
@@ -319,82 +329,62 @@ mainPage bsize model =
 
             else
                 let
-                    winString player reason =
+                    winString player maybeSaidUncle reason =
                         let
                             name =
                                 localizedPlayerName player game
                         in
-                        name ++ " won " ++ winReasonToDescription reason ++ "!"
+                        case saidUncle of
+                            Nothing ->
+                                name ++ " won " ++ winReasonToDescription reason ++ "!"
+
+                            Just saidUncle ->
+                                if saidUncle == player then
+                                    name ++ " won after saying Uncle!"
+
+                                else
+                                    let
+                                        saidUncleName =
+                                            localizedPlayerName saidUncle game
+                                    in
+                                    name
+                                        ++ " won after "
+                                        ++ saidUncleName
+                                        ++ " said Uncle!"
                 in
                 case gameState.winner of
-                    WhiteWinner reason ->
-                        ( False, winString WhitePlayer reason, False )
+                    StockUsedWinner player ->
+                        ( False, winString player Nothing reason, False )
 
-                    BlackWinner reason ->
-                        ( False, winString BlackPlayer reason, False )
+                    SayUncleWinner { saidUncle, won } ->
+                        ( False, winString won (Just saidUncle) reason, False )
 
                     NoWinner ->
                         let
+                            playString =
+                                playDescription gameState.state
+
                             ( prefixp, action, yourTurn2 ) =
-                                if corruptJumped == AskAsk || makeHulk == AskAsk then
-                                    if isReviewingOrArchiving then
-                                        ( False
-                                        , "It is your move"
-                                        , True
-                                        )
-
-                                    else
-                                        ( True
-                                        , "follow the instructions in the orange-outlined box below"
-                                        , True
-                                        )
-
-                                else if inCrowd then
-                                    ( False
-                                    , chars.watchingMessage
-                                    , False
-                                    )
-
-                                else if
+                                if
                                     not game.isLocal
                                         && (gameState.whoseTurn /= game.player)
                                 then
                                     let
                                         otherName =
-                                            if currentPlayer == Just BlackPlayer then
-                                                white
-
-                                            else
-                                                black
+                                            localizedPlayerName gameState.whoseTurn
+                                                game
                                     in
                                     ( False
-                                    , "Waiting for " ++ otherName ++ " to move"
+                                    , "Waiting for "
+                                        ++ otherName
+                                        ++ " to "
+                                        ++ playDescription
                                     , False
                                     )
 
-                                else if isReviewingOrArchiving then
-                                    ( False, "It is your move", True )
-
                                 else
                                     ( True
-                                    , case gameState.selected of
-                                        Nothing ->
-                                            if gameState.jumperLocations == [] then
-                                                "choose a piece to move"
-
-                                            else
-                                                "choose one of the selected jumper pieces"
-
-                                        Just _ ->
-                                            case gameState.legalMoves of
-                                                NoMoves ->
-                                                    "selected piece has no legal moves."
-
-                                                Moves _ ->
-                                                    "click on a highlighted square to move the selected piece"
-
-                                                Jumps _ ->
-                                                    "click on a highlighted square to jump"
+                                    , playString
                                     , True
                                     )
 
@@ -402,11 +392,7 @@ mainPage bsize model =
                                 if prefixp then
                                     let
                                         name =
-                                            if currentPlayer == Just WhitePlayer then
-                                                white
-
-                                            else
-                                                black
+                                            localizedPlayerName game.player game
                                     in
                                     name ++ ", "
 
@@ -533,11 +519,9 @@ mainPage bsize model =
     in
     div [ align "center" ]
         [ Lazy.lazy6 Board.render
-            theStyle
-            bsize
             Click
-            currentPlayer
-            rotated
+            bsize
+            game.player
             gameState
         , span
             []
