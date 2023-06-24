@@ -163,9 +163,6 @@ encodePage page =
             PublicPage ->
                 "PublicPage"
 
-            MovesPage ->
-                "MovesPage"
-
             StatisticsPage ->
                 "StatisticsPage"
 
@@ -187,9 +184,6 @@ pageDecoder =
 
                     "PublicPage" ->
                         JD.succeed PublicPage
-
-                    "MovesPage" ->
-                        JD.succeed MovesPage
 
                     "StatisticsPage" ->
                         JD.succeed StatisticsPage

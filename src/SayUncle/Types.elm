@@ -127,7 +127,6 @@ type Page
     | RulesPage
     | InstructionsPage
     | PublicPage
-    | MovesPage
     | StatisticsPage
 
 

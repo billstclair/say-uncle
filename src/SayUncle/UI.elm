@@ -191,9 +191,6 @@ view model =
                     PublicPage ->
                         publicPage bsize model
 
-                    MovesPage ->
-                        movesPage bsize model
-
                     StatisticsPage ->
                         statisticsPage bsize model
                 ]
@@ -495,7 +492,7 @@ mainPage bsize model =
                                     "You"
 
                                 else
-                                    case Dict.get player gameState.playerName of
+                                    case Dict.get player gameState.playerNames of
                                         Nothing ->
                                             "[unknown]"
 
@@ -511,7 +508,10 @@ mainPage bsize model =
                     scoreRows =
                         Dict.fold folder [] points
                 in
-                table []
+                table
+                    [ class "prettytable"
+                    , style "color" "black"
+                    ]
                     [ tr []
                         [ th [ text "Name" ]
                         , th [ text "Won" ]
@@ -836,8 +836,8 @@ publicPage bsize model =
         name =
             settings.name
 
-        ( waiting, inplay ) =
-            discriminatePublicGames model.publicGames
+        waiting =
+            model.publicGames
     in
     rulesDiv False
         [ rulesDiv True
@@ -864,11 +864,7 @@ publicPage bsize model =
             , p [ align "center" ]
                 [ if game.isLive then
                     p [ style "color" "red" ]
-                        [ if game.watcherName == Nothing then
-                            text "You're playing a game. What are you doing here?"
-
-                          else
-                            text "You are a spectator for a live game. Disconnect or create a new session to join a new one."
+                        [ text "You're playing a game. What are you doing here?"
                         ]
 
                   else
@@ -898,127 +894,8 @@ publicPage bsize model =
                                 waiting
                             ]
                     ]
-            , if inplay == [] then
-                text ""
-
-              else
-                span []
-                    [ h3 [] [ text <| "Games that you may observe:" ]
-                    , table
-                        [ class "prettytable"
-                        , style "color" "black"
-                        ]
-                      <|
-                        List.concat
-                            [ [ tr []
-                                    [ th "Session ID"
-                                    , th "White"
-                                    , th "Black"
-                                    , th "Observing"
-                                    , th "Started"
-                                    , th "Moves"
-                                    , th "Last Move"
-                                    ]
-                              ]
-                            , renderInplayPublicGameRow model.tick
-                                model.zone
-                                model.gameid
-                                game.isLive
-                                name
-                                model
-                            ]
-                    ]
             , playButton
             , footerParagraph
-            ]
-        ]
-
-
-discriminatePublicGames : List PublicGameAndPlayers -> ( List PublicGameAndPlayers, List PublicGameAndPlayers )
-discriminatePublicGames games =
-    let
-        folder game ( waiting, inplay ) =
-            let
-                { white, black } =
-                    game.players
-            in
-            if white /= "" && black /= "" then
-                ( waiting, game :: inplay )
-
-            else
-                ( game :: waiting, inplay )
-    in
-    List.foldr folder ( [], [] ) games
-
-
-renderInplayPublicGameRow : Posix -> Zone -> List GameId -> Bool -> String -> Model -> PublicGameAndPlayers -> Html Msg
-renderInplayPublicGameRow tick zone gameids connected name model { publicGame, players, watchers, moves, startTime, endTime } =
-    let
-        { gameid } =
-            publicGame
-
-        { white, black } =
-            players
-
-        center =
-            style "text-align" "center"
-
-        ( dontLink, ( whiteText, blackText, watcherText ) ) =
-            if gameid /= model.gameid then
-                ( connected || name == "" || name == white || name == black
-                , ( text, text, text )
-                )
-
-            else
-                let
-                    game =
-                        model.game
-                in
-                case game.player of
-                    WhitePlayer ->
-                        ( False, ( b, text, text ) )
-
-                    BlackPlayer ->
-                        ( False, ( text, b, text ) )
-    in
-    tr []
-        [ td [ center ]
-            [ if dontLink then
-                text gameid
-
-              else
-                a
-                    [ href "#"
-                    , onClick <| JoinGameAsWatcher gameid
-                    ]
-                    [ text gameid ]
-            ]
-        , td [ center ]
-            [ whiteText white ]
-        , td [ center ]
-            [ blackText black ]
-        , td [ center ]
-            [ watcherText <| String.fromInt watchers ]
-        , td [ center ]
-            [ if moves == 0 then
-                text chars.nbsp
-
-              else
-                text <| shortDateAndTimeString zone startTime
-            ]
-        , td [ center ]
-            [ text <| String.fromInt moves ]
-        , td [ center ]
-            [ if moves == 0 then
-                text chars.nbsp
-
-              else
-                text <|
-                    DateFormat.Relative.relativeTime
-                        tick
-                        (min (Time.posixToMillis endTime) (Time.posixToMillis tick)
-                            |> Time.millisToPosix
-                        )
             ]
         ]
 
@@ -1218,408 +1095,6 @@ roundPosix posix =
     Time.posixToMillis posix
         |> (\m -> 1000 * round (toFloat m / 1000))
         |> Time.millisToPosix
-
-
-movesPage : Int -> Model -> Html Msg
-movesPage bsize model =
-    let
-        settings =
-            model.settings
-
-        game =
-            model.game
-
-        gameState =
-            game.gameState
-
-        moves =
-            List.reverse gameState.moves
-
-        realGame =
-            case model.showArchive of
-                Just ( g, _ ) ->
-                    g
-
-                Nothing ->
-                    case model.showMove of
-                        Nothing ->
-                            game
-
-                        Just ( g, _ ) ->
-                            g
-
-        realMoves =
-            List.reverse realGame.gameState.moves
-
-        gameTime =
-            case List.head realMoves of
-                Just move ->
-                    Just move.time
-
-                Nothing ->
-                    Nothing
-
-        ( totalTime, offsetMoves ) =
-            case gameTime of
-                Nothing ->
-                    ( Types.posixZero, moves )
-
-                Just time ->
-                    let
-                        millis =
-                            Time.posixToMillis (roundPosix time)
-
-                        moves2 =
-                            moves
-                                |> List.map
-                                    (\move ->
-                                        { move
-                                            | time =
-                                                (Time.posixToMillis (roundPosix move.time) - millis)
-                                                    |> Time.millisToPosix
-                                        }
-                                    )
-
-                        moves3 =
-                            moves2
-                                |> List.foldl
-                                    (\move ( res, last ) ->
-                                        let
-                                            atime =
-                                                move.time |> Time.posixToMillis
-                                        in
-                                        ( { move | time = Time.millisToPosix (atime - last) } :: res
-                                        , atime
-                                        )
-                                    )
-                                    ( [], 0 )
-                                |> Tuple.first
-                                |> List.reverse
-                    in
-                    ( case List.head (List.reverse moves2) of
-                        Just p ->
-                            p.time
-                                |> Time.posixToMillis
-                                |> (\a ->
-                                        1000
-                                            * round (toFloat a / 1000)
-                                            |> Time.millisToPosix
-                                   )
-
-                        Nothing ->
-                            Types.posixZero
-                    , moves3
-                    )
-
-        { white, black } =
-            gameState.players
-
-        pairList : List a -> List (List a)
-        pairList list =
-            let
-                mapper a ( evenp, res ) =
-                    if evenp then
-                        ( False, [ a ] :: res )
-
-                    else
-                        case res of
-                            [ a1 ] :: rest ->
-                                ( True, [ a1, a ] :: rest )
-
-                            _ ->
-                                -- Can't happen
-                                ( True, res )
-            in
-            List.foldl mapper ( True, [] ) list
-                |> Tuple.second
-                |> List.reverse
-
-        gameTimeSpan =
-            case gameTime of
-                Nothing ->
-                    text ""
-
-                Just time ->
-                    span []
-                        [ text <| dateAndTimeString model.zone time
-                        , br
-                        , b "Total time: "
-                        , text <| hmsString True totalTime
-                        ]
-
-        ( winner, reason ) =
-            case gameState.winner of
-                NoWinner ->
-                    ( Nothing, WinByCapture )
-
-                WhiteWinner reas ->
-                    ( Just WhitePlayer, reas )
-
-                BlackWinner reas ->
-                    ( Just BlackPlayer, reas )
-
-        winString =
-            case winner of
-                Nothing ->
-                    "No winner, yet"
-
-                Just player ->
-                    let
-                        winnerName =
-                            if game.isLocal then
-                                case player of
-                                    WhitePlayer ->
-                                        "White"
-
-                                    BlackPlayer ->
-                                        "Black"
-
-                            else
-                                case player of
-                                    WhitePlayer ->
-                                        white
-
-                                    BlackPlayer ->
-                                        black
-
-                        reasonString =
-                            case reason of
-                                WinByCapture ->
-                                    "capture"
-
-                                WinBySanctum ->
-                                    "sanctum"
-
-                                WinByImmobilization ->
-                                    "immobilization"
-
-                                WinByResignation ->
-                                    "resignation"
-
-                        moveCnt =
-                            (List.length moves + 1) // 2 |> String.fromInt
-                    in
-                    winnerName ++ " won by " ++ reasonString ++ " in " ++ moveCnt
-
-        ( endReview, totalMoveCnt ) =
-            case model.showMove of
-                Nothing ->
-                    ( text "", List.length moves )
-
-                Just ( g, _ ) ->
-                    ( span []
-                        [ br
-                        , button [ onClick <| SetMoveIndex 0 ]
-                            [ text "End review" ]
-                        ]
-                    , List.length g.gameState.moves
-                    )
-
-        game =
-            case model.showArchive of
-                Just ( g, _ ) ->
-                    g
-
-                Nothing ->
-                    case model.showMove of
-                        Nothing ->
-                            model.game
-
-                        Just ( g, _ ) ->
-                            g
-
-        inCrowd =
-            game.watcherName /= Nothing
-    in
-    rulesDiv False
-        [ rulesDiv True
-            [ h2 [ align "center" ]
-                [ text "Moves" ]
-            , p [] [ playButton ]
-            , if game.isLocal then
-                p []
-                    [ gameTimeSpan
-                    , br
-                    , text winString
-                    , endReview
-                    ]
-
-              else
-                p []
-                    [ gameTimeSpan
-                    , br
-                    , b "White: "
-                    , text white
-                    , text ", "
-                    , b "Black: "
-                    , text black
-                    , br
-                    , text winString
-                    , endReview
-                    , if not game.isLive || game.gameState.winner /= NoWinner then
-                        text ""
-
-                      else
-                        let
-                            whoseTurn =
-                                game.gameState.whoseTurn
-
-                            yourTurn =
-                                not inCrowd && whoseTurn == game.player
-                        in
-                        span (notificationStyles yourTurn True game.gameState)
-                            [ if model.showArchive == Nothing then
-                                text ""
-
-                              else
-                                span []
-                                    [ br
-                                    , text "This is an archived game."
-                                    ]
-                            , br
-                            , if inCrowd then
-                                span []
-                                    [ text <| chars.watchingMessage ++ "."
-                                    , br
-                                    , text "It's "
-                                    , text <| playerName whoseTurn game
-                                    , text "'s turn to move."
-                                    ]
-
-                              else if yourTurn then
-                                text "It's your turn in the game."
-
-                              else
-                                let
-                                    players =
-                                        game.gameState.players
-
-                                    name =
-                                        if game.player == WhitePlayer then
-                                            players.black
-
-                                        else
-                                            players.white
-                                in
-                                text <| "Waiting for " ++ name ++ " to move"
-                            ]
-                    ]
-            , text "Click in the table see the board after that move"
-            , br
-            , table
-                [ class "prettytable"
-                , style "color" "black"
-                ]
-              <|
-                [ tr []
-                    [ th chars.nbsp
-                    , th chars.nbsp
-                    , th "White"
-                    , th "Black"
-                    , th chars.nbsp
-                    ]
-                ]
-                    ++ List.indexedMap (movesRow totalMoveCnt)
-                        (offsetMoves |> pairList)
-            , p [] [ playButton ]
-            , footerParagraph
-            ]
-        ]
-
-
-isEven : Int -> Bool
-isEven x =
-    x == x // 2 * 2
-
-
-movesRow : Int -> Int -> List OneMove -> Html Msg
-movesRow moveCnt index moves =
-    let
-        ( maybeWhite, maybeBlack ) =
-            case List.take 2 moves of
-                [ white ] ->
-                    ( Just white, Nothing )
-
-                [ white, black ] ->
-                    ( Just white, Just black )
-
-                _ ->
-                    ( Nothing, Nothing )
-
-        beforeWhiteIdx =
-            moveCnt - 2 * index
-
-        whiteIdx =
-            if maybeWhite == Nothing then
-                beforeWhiteIdx
-
-            else
-                beforeWhiteIdx - 1
-
-        blackIdx =
-            if maybeBlack == Nothing then
-                whiteIdx
-
-            else
-                whiteIdx - 1
-    in
-    tr []
-        [ td
-            [ alignCenterStyle
-            , onClick <| ReviewMoves beforeWhiteIdx
-            ]
-            [ text (String.fromInt <| index + 1) ]
-        , td
-            [ alignRightStyle
-            , smallTextStyle
-            , onClick <| ReviewMoves beforeWhiteIdx
-            ]
-            [ case maybeWhite of
-                Nothing ->
-                    text chars.nbsp
-
-                Just { time } ->
-                    if index == 0 && time == Types.posixZero then
-                        text chars.nbsp
-
-                    else
-                        text <| hmsString False time
-            ]
-        , td
-            [ alignCenterStyle
-            , onClick <| ReviewMoves whiteIdx
-            ]
-            [ case maybeWhite of
-                Nothing ->
-                    text chars.nbsp
-
-                Just white ->
-                    text <| ED.oneMoveToPrettyString white
-            ]
-        , td
-            [ alignCenterStyle
-            , onClick <| ReviewMoves blackIdx
-            ]
-            [ case maybeBlack of
-                Nothing ->
-                    text chars.nbsp
-
-                Just black ->
-                    text <| ED.oneMoveToPrettyString black
-            ]
-        , td
-            [ alignRightStyle
-            , smallTextStyle
-            , onClick <| ReviewMoves blackIdx
-            ]
-            [ case maybeBlack of
-                Nothing ->
-                    text chars.nbsp
-
-                Just { time } ->
-                    text <| hmsString False time
-            ]
-        ]
 
 
 playerString : Player -> String
@@ -1841,7 +1316,6 @@ chars =
     , copyright = codestr 0xA9
     , nbsp = codestr 0xA0
     , mdash = codestr 0x2014
-    , watchingMessage = "You are a spectator for this game, not playing"
     }
 
 
