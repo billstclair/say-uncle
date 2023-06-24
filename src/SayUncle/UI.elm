@@ -413,109 +413,6 @@ mainPage bsize model =
 
         messageStyles =
             notificationStyles yourTurn playing gameState
-
-        movesSpan =
-            let
-                ( moveText, moveCnt, moveIndex ) =
-                    moveString model
-            in
-            if moveCnt == 0 && model.showMove == Nothing then
-                if not isArchiving then
-                    text ""
-
-                else
-                    button [ onClick <| SetArchiveIndex "-1" ]
-                        [ text "End archive" ]
-
-            else
-                let
-                    threeSpaces =
-                        chars.nbsp ++ chars.nbsp ++ chars.nbsp
-
-                    boldWeight =
-                        style "font-weight" "bold"
-                in
-                span []
-                    [ a
-                        [ href "#"
-                        , onClick <| SetPage MovesPage
-                        ]
-                        [ b "Moves:" ]
-                    , text " "
-                    , text moveText
-                    , if not isReviewingOrArchiving then
-                        text ""
-
-                      else
-                        span []
-                            [ text " "
-                            , if isArchiving then
-                                button [ onClick <| SetArchiveIndex "-1" ]
-                                    [ text "End archive" ]
-
-                              else
-                                button [ onClick <| SetMoveIndex 0 ]
-                                    [ text "End review" ]
-                            ]
-                    , br
-                    , span [ boldWeight ]
-                        [ if moveIndex < moveCnt then
-                            span []
-                                [ a
-                                    [ href "#"
-                                    , onClick <| SetMoveIndex moveCnt
-                                    ]
-                                    [ text <| chars.nbsp ++ "|<" ++ chars.nbsp ]
-                                , text threeSpaces
-                                , a
-                                    [ href "#"
-                                    , onClick <| SetMoveIndex (moveIndex + 1)
-                                    ]
-                                    [ text <| chars.nbsp ++ "<" ++ chars.nbsp ]
-                                ]
-
-                          else
-                            span []
-                                [ text <| chars.nbsp ++ "|<" ++ chars.nbsp
-                                , text threeSpaces
-                                , text <| chars.nbsp ++ "<" ++ chars.nbsp
-                                ]
-                        , text threeSpaces
-                        , if moveIndex > 0 then
-                            span []
-                                [ a
-                                    [ href "#"
-                                    , onClick <| SetMoveIndex (moveIndex - 1)
-                                    ]
-                                    [ text <| chars.nbsp ++ ">" ++ chars.nbsp ]
-                                , text threeSpaces
-                                , a
-                                    [ href "#"
-                                    , onClick <| SetMoveIndex 0
-                                    ]
-                                    [ text <| chars.nbsp ++ ">|" ++ chars.nbsp ]
-                                ]
-
-                          else
-                            span []
-                                [ text <| chars.nbsp ++ ">" ++ chars.nbsp
-                                , text threeSpaces
-                                , text <| chars.nbsp ++ ">|" ++ chars.nbsp
-                                ]
-                        , br
-                        ]
-                    ]
-
-        showMessageQueueCheckBox =
-            span []
-                [ b "Show protocol: "
-                , input
-                    [ type_ "checkbox"
-                    , checked model.showMessageQueue
-                    , onCheck SetShowMessageQueue
-                    ]
-                    []
-                ]
     in
     div [ align "center" ]
         [ Lazy.lazy6 Board.render
@@ -535,14 +432,6 @@ mainPage bsize model =
                         [ text err
                         , br
                         ]
-            , if not isReviewingOrArchiving then
-                text ""
-
-              else
-                span messageStyles
-                    [ text reviewingMessage
-                    , br
-                    ]
             , if message == "" then
                 text ""
 
@@ -551,15 +440,7 @@ mainPage bsize model =
                     [ text message
                     , br
                     ]
-            , if not isReviewingOrArchiving then
-                text ""
-
-              else
-                movesSpan
-            , if
-                (gameState.winner /= NoWinner)
-                    || (gameState.moves == [] && gameState.players == Types.emptyPlayerNames)
-              then
+            , if gameState.winner /= NoWinner then
                 text ""
 
               else
@@ -567,43 +448,10 @@ mainPage bsize model =
                     [ b "Whose turn: "
                     , text <| localizedPlayerName gameState.whoseTurn game
                     ]
-            , if corruptJumped == AskAsk || makeHulk == AskAsk then
-                if isReviewingOrArchiving then
-                    text ""
-
-                else
-                    div
-                        [ style "border" <| "3px solid orange"
-                        , style "padding" "5px"
-                        , style "width" "fit-content"
-                        ]
-                        [ if corruptJumped == AskAsk then
-                            span []
-                                [ b "Corrupt Jumped Piece: "
-                                , button [ onClick <| CorruptJumpedUI (AskYes ()) ]
-                                    [ text "Yes" ]
-                                , button [ onClick <| CorruptJumpedUI AskNo ]
-                                    [ text "No" ]
-                                , br
-                                ]
-
-                          else
-                            text ""
-                        , if makeHulk == AskAsk then
-                            span []
-                                [ b "Click a Golem to make it a Hulk, Click an empty square to not make a hulk."
-                                , br
-                                ]
-
-                          else
-                            text ""
-                        ]
-
-              else
-                text ""
             , if not game.isLocal && game.isLive then
                 span []
-                    [ if white == "" || black == "" then
+                    [ if Dict.size gameState.players <= 1 then
+                        -- No chat if nobody to chat with
                         br
 
                       else
@@ -626,180 +474,49 @@ mainPage bsize model =
                                 [ text "Clear" ]
                             , ElmChat.chat chatSettings
                             ]
-                    , b "White: "
-                    , text <|
-                        case white of
-                            "" ->
-                                ""
-
-                            _ ->
-                                localizedPlayerName game.player game
-                    , br
-                    , b "Black: "
-                    , text <|
-                        case black of
-                            "" ->
-                                ""
-
-                            _ ->
-                                localizedPlayerName (Types.otherPlayer game.player) game
-
-                    --, br
                     ]
 
               else
                 text ""
-            , if isReviewingOrArchiving then
-                text ""
-
-              else
-                let
-                    undoLen =
-                        List.length gameState.undoStates
-                in
-                if undoLen == 0 then
-                    text ""
-
-                else
-                    span []
-                        [ br
-                        , button [ onClick <| SendUndoJumps UndoOneJump ]
-                            [ text "Undo Jump" ]
-                        , if undoLen <= 1 then
-                            text ""
-
-                          else
-                            span []
-                                [ text " "
-                                , button [ onClick <| SendUndoJumps UndoAllJumps ]
-                                    [ text "Undo All Jumps" ]
-                                ]
-                        ]
-            , br
-            , if isReviewingOrArchiving || not game.isLive || gameState.winner /= NoWinner || inCrowd then
-                text ""
-
-              else if not yourTurn && hasBothPlayers then
-                span []
-                    [ b "Undo request: "
-                    , input
-                        [ onInput SetRequestUndoMessage
-                        , value model.requestUndoMessage
-                        , size 20
-                        , onEnter SendRequestUndo
-                        ]
-                        []
-                    , text " "
-                    , button [ onClick SendRequestUndo ]
-                        [ text "Send" ]
-                    , case gameState.requestUndo of
-                        NoRequestUndo ->
-                            text ""
-
-                        RequestUndo msg ->
-                            span []
-                                [ br
-                                , b "Undo request sent: "
-                                , text <| maybeNoText msg
-                                ]
-
-                        DenyUndo msg ->
-                            span []
-                                [ br
-                                , span [ style "color" "red" ]
-                                    [ text "Denied: "
-                                    , text <| maybeNoText msg
-                                    ]
-                                ]
-                    , br
-                    ]
-
-              else
-                case gameState.requestUndo of
-                    NoRequestUndo ->
-                        text ""
-
-                    DenyUndo msg ->
-                        span []
-                            [ text "Undo denial sent: "
-                            , text <| maybeNoText msg
-                            , br
-                            ]
-
-                    RequestUndo msg ->
-                        span []
-                            [ span [ style "color" "red" ]
-                                [ text "Undo requested: "
-                                , text <| maybeNoText msg ++ " "
-                                ]
-                            , button [ onClick SendAcceptUndo ]
-                                [ text "Accept" ]
-                            , br
-                            , b "Deny undo: "
-                            , input
-                                [ onInput SetDenyUndoMessage
-                                , value model.denyUndoMessage
-                                , size 20
-                                , onEnter SendDenyUndo
-                                ]
-                                []
-                            , text " "
-                            , button [ onClick SendDenyUndo ]
-                                [ text "Send" ]
-                            , br
-                            ]
-            , if isReviewingOrArchiving then
-                text ""
-
-              else
-                movesSpan
             , let
-                { games, whiteWins, blackWins } =
+                { games, points } =
                     gameState.score
-
-                yourWins =
-                    game.yourWins
-
-                player =
-                    game.player
-
-                otherPlayer =
-                    Types.otherPlayer player
               in
               if games == 0 then
                 text ""
 
               else
                 let
-                    ( yourWinString, otherWinString ) =
-                        if game.isLocal then
-                            ( "White won " ++ String.fromInt whiteWins
-                            , "Black won " ++ String.fromInt blackWins
-                            )
-
-                        else
-                            ( localizedPlayerName player game
-                                ++ " won "
-                                ++ String.fromInt yourWins
-                            , localizedPlayerName otherPlayer game
-                                ++ " won "
-                                ++ String.fromInt (games - yourWins)
-                            )
-                in
-                span []
-                    [ text <|
-                        String.fromInt games
-                            ++ (if games == 1 then
-                                    "game, "
+                    folder : Player -> Int -> List (Html Msg) -> List (Html Msg)
+                    folder player score rows =
+                        let
+                            playerName =
+                                if player == game.player then
+                                    "You"
 
                                 else
-                                    " games, "
-                               )
-                    , text yourWinString
-                    , text ", "
-                    , text otherWinString
-                    , text " "
-                    , br
+                                    case Dict.get player gameState.playerName of
+                                        Nothing ->
+                                            "[unknown]"
+
+                                        Just name ->
+                                            name
+                        in
+                        tr
+                            [ td [] [ text playerName ]
+                            , td [ style "text-align" "right" ]
+                                [ text <| String.fromInt score ]
+                            ]
+
+                    scoreRows =
+                        Dict.fold folder [] points
+                in
+                table []
+                    [ tr []
+                        [ th [ text "Name" ]
+                        , th [ text "Won" ]
+                        ]
+                        :: rows
                     ]
             , if model.showMessageQueue then
                 span []
@@ -810,19 +527,6 @@ mainPage bsize model =
 
               else
                 br
-            , b "Rotate: "
-            , radio "rotate"
-                "white down"
-                (model.rotate == RotateWhiteDown)
-                False
-                (SetRotate RotateWhiteDown)
-            , text " "
-            , radio "rotate"
-                "player down"
-                (model.rotate == RotatePlayerDown)
-                False
-                (SetRotate RotatePlayerDown)
-            , br
             , b "Local: "
             , input
                 [ type_ "checkbox"
@@ -867,32 +571,24 @@ mainPage bsize model =
                 [ type_ "checkbox"
                 , checked model.soundEnabled
                 , onCheck SetSoundEnabled
+
+                -- not yet
+                , disabled True
                 ]
                 []
             , text " "
-            , if isReviewingOrArchiving || inCrowd then
-                text ""
-
-              else
-                button
-                    [ onClick NewGame
-                    , disabled (not <| isPlaying model)
-                    ]
-                    [ text <|
-                        if gameState.winner == NoWinner then
-                            "Resign"
-
-                        else
-                            "New Game"
-                    ]
+            , button
+                [ onClick NewGame
+                , disabled <|
+                    (gameState.winner /= NoWinner)
+                        || (player /= 0 && not game.isLocal)
+                ]
+                [ text "New Game" ]
             , div [ align "center" ]
                 [ if game.isLive then
                     div [ align "center" ]
                         [ b "Session ID: "
                         , text model.gameid
-                        , br
-                        , b "Archives: "
-                        , archiveSelector model
                         , br
                         , button
                             [ onClick Disconnect ]
@@ -966,9 +662,6 @@ mainPage bsize model =
                             ]
                             [ text "Join"
                             ]
-                        , br
-                        , b "Archives: "
-                        , archiveSelector model
                         ]
                 ]
             ]
@@ -1039,126 +732,6 @@ notificationStyles yourTurn playing gameState =
     ]
 
 
-archiveSelector : Model -> Html Msg
-archiveSelector model =
-    let
-        game =
-            model.game
-
-        archives =
-            game.archives
-    in
-    if archives == [] then
-        text ""
-
-    else
-        let
-            currentArchive =
-                case model.showArchive of
-                    Nothing ->
-                        Nothing
-
-                    Just ( _, index ) ->
-                        Just index
-        in
-        select [ onInput SetArchiveIndex ] <|
-            [ option
-                [ value ""
-                , selected <| currentArchive == Nothing
-                ]
-                [ text "Chose an archived game..." ]
-            ]
-                ++ List.indexedMap (archiveOption model.zone currentArchive) archives
-
-
-archiveOption : Zone -> Maybe Int -> Int -> ArchivedGame -> Html Msg
-archiveOption zone currentIndex index { moves, players, winner } =
-    let
-        { white, black } =
-            players
-
-        timeString =
-            case List.head <| List.reverse moves of
-                Nothing ->
-                    ""
-
-                Just { time } ->
-                    shortDateAndTimeString zone time
-
-        winString =
-            case winner of
-                NoWinner ->
-                    "No winner"
-
-                WhiteWinner reason ->
-                    "white won " ++ winReasonToDescription reason
-
-                BlackWinner reason ->
-                    "black won " ++ winReasonToDescription reason
-    in
-    option
-        [ value <| String.fromInt index
-        , selected <| Just index == currentIndex
-        ]
-        [ text <|
-            (white ++ " vs. " ++ black)
-                ++ (if timeString == "" then
-                        ""
-
-                    else
-                        ", " ++ timeString
-                   )
-                ++ (", " ++ winString)
-        ]
-
-
-moveString : Model -> ( String, Int, Int )
-moveString model =
-    let
-        gameState =
-            model.game.gameState
-
-        moves =
-            gameState.moves
-
-        len =
-            4
-
-        movesLength =
-            List.length moves
-
-        ellipsis =
-            if movesLength > len then
-                ", ..."
-
-            else
-                ""
-
-        ( prefix, count, index ) =
-            case model.showMove of
-                Nothing ->
-                    ( "", movesLength, 0 )
-
-                Just ( fullGame, idx ) ->
-                    ( if idx > 0 then
-                        if movesLength == 0 then
-                            "..."
-
-                        else
-                            "..., "
-
-                      else
-                        ""
-                    , List.length fullGame.gameState.moves
-                    , idx
-                    )
-
-        head =
-            List.take 4 moves
-    in
-    ( prefix ++ movesToString head ++ ellipsis, count, index )
-
-
 footerParagraph : Html Msg
 footerParagraph =
     p []
@@ -1187,7 +760,7 @@ footerParagraph =
             [ text "Statistics" ]
         , br
         , a
-            [ href "https://github.com/billstclair/agog/"
+            [ href "https://github.com/billstclair/say-uncle/"
             , target "_blank"
             ]
             [ text "GitHub" ]
@@ -1198,40 +771,17 @@ footerParagraph =
             ]
             [ text "Gib Goy Games" ]
         , br
-        , text <| chars.copyright ++ " 2019-2022 Bill St. Clair <"
+        , text <| chars.copyright ++ " 2019-2023 Bill St. Clair <"
         , a [ href "mailto:GibGoyGames@gmail.com" ]
             [ text "GibGoyGames@gmail.com" ]
         , text ">"
         , br
         , a
-            [ href "https://github.com/billstclair/agog/blob/main/LICENSE"
+            [ href "https://github.com/billstclair/say-uncle/blob/main/LICENSE"
             , target "_blank"
             ]
             [ text "MIT License" ]
         ]
-
-
-pairup : List String -> List ( String, String )
-pairup strings =
-    let
-        loop list res =
-            case list of
-                [] ->
-                    List.reverse res
-
-                [ x ] ->
-                    List.reverse <| ( x, "" ) :: res
-
-                x :: (y :: tail) ->
-                    loop tail (( x, y ) :: res)
-    in
-    loop strings []
-
-
-movesToString : List OneMove -> String
-movesToString moves =
-    List.map ED.oneMoveToPrettyString moves
-        |> String.join ", "
 
 
 radio : String -> String -> Bool -> Bool -> msg -> Html msg
