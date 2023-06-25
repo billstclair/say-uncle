@@ -661,7 +661,6 @@ gameStateIsVerbose gs =
 
 type alias StatisticsKeys =
     { finishedGames : String
-    , totalMoves : String
     , activeGames : String
     , totalConnections : String
     , totalPublicConnections : String
@@ -672,7 +671,6 @@ type alias StatisticsKeys =
 statisticsKeys : StatisticsKeys
 statisticsKeys =
     { finishedGames = "Finished Games"
-    , totalMoves = "Finished Game Total Moves"
     , activeGames = "Active Games"
     , totalConnections = "Total Sessions"
     , totalPublicConnections = "Total Public Sessions"
@@ -683,7 +681,6 @@ statisticsKeys =
 statisticsKeyOrder : List (StatisticsKeys -> String)
 statisticsKeyOrder =
     [ .finishedGames
-    , .totalMoves
     , .activeGames
     , .totalConnections
     , .totalPublicConnections

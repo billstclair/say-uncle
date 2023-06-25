@@ -72,6 +72,7 @@ import SayUncle.Types as Types
         , Winner(..)
         , statisticsKeys
         )
+import SayUncle.UI as UI exposing (ids, onEnter, onKeydown, view)
 import SayUncle.WhichServer as WhichServer
 import Svg exposing (Svg, foreignObject, g, line, rect, svg)
 import Svg.Attributes
@@ -258,18 +259,6 @@ updateChatAttributes bsize styleType settings =
                     , style "border-color" renderStyle.lineColor
                     ]
             }
-    }
-
-
-
--- TODO
--- Use UI.ids
-
-
-ids =
-    { chatOutput = "chatOutput"
-    , chatInput = "chatInput"
-    , forName = "forName"
     }
 
 
@@ -1449,24 +1438,6 @@ processConnectionReason game connectionReason model =
 focusId : String -> Cmd Msg
 focusId id =
     Task.attempt (\_ -> Noop) (Dom.focus id)
-
-
-onKeydown : (Int -> msg) -> Attribute msg
-onKeydown tagger =
-    on "keydown" (JD.map tagger keyCode)
-
-
-onEnter : Msg -> Attribute Msg
-onEnter msg =
-    let
-        tagger keycode =
-            if keycode == 13 then
-                msg
-
-            else
-                Noop
-    in
-    onKeydown tagger
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )

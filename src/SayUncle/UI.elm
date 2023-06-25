@@ -10,11 +10,14 @@
 ----------------------------------------------------------------------
 
 
-module SayUncle.UI exposing (view)
+module SayUncle.UI exposing (ids, onEnter, onKeydown, view)
 
+import Browser exposing (Document, UrlRequest(..))
 import DateFormat
 import DateFormat.Relative
 import Dict exposing (Dict)
+import ElmChat
+import Fifo exposing (Fifo)
 import FormatNumber exposing (format)
 import FormatNumber.Locales exposing (usLocale)
 import Html
@@ -77,7 +80,13 @@ import Html.Attributes as Attributes
         )
 import Html.Events exposing (keyCode, on, onCheck, onClick, onInput)
 import Html.Lazy as Lazy
+import Json.Decode as JD exposing (Decoder, Value)
 import List.Extra as LE
+import PortFunnel.Notification as Notification exposing (Permission(..))
+import SayUncle.Board as Board
+import SayUncle.Documentation as Documentation
+import SayUncle.EncodeDecode as ED
+import SayUncle.Interface as Interface
 import SayUncle.Types as Types
     exposing
         ( AskYesNo(..)
@@ -106,6 +115,8 @@ import SayUncle.Types as Types
         , Score
         , ServerState
         , Settings
+        , Size
+        , State(..)
         , StatisticsKeys
         , Style
         , StyleType(..)
@@ -114,6 +125,19 @@ import SayUncle.Types as Types
         , statisticsKeys
         )
 import Time exposing (Month(..), Posix, Zone)
+import WebSocketFramework.EncodeDecode as WSFED
+import WebSocketFramework.Types
+    exposing
+        ( EncodeDecode
+        , GameId
+        , MessageDecoder
+        , MessageEncoder
+        , PlayerId
+        , ReqRsp(..)
+        , ServerInterface(..)
+        , ServerMessageProcessor
+        , Statistics
+        )
 
 
 br : Html Msg
@@ -121,18 +145,38 @@ br =
     Html.br [] []
 
 
-boardSize : Model -> Int
+boardSize : Model -> Size
 boardSize model =
     let
         ( w, h ) =
             model.windowSize
     in
-    min (90 * w) (65 * h) // 100
+    { width = (90 * w) // 100
+    , height = (65 * h) // 100
+    }
 
 
 herculanumStyle : Attribute msg
 herculanumStyle =
     style "font-family" "Herculanum, sans-serif"
+
+
+onKeydown : (Int -> msg) -> Attribute msg
+onKeydown tagger =
+    on "keydown" (JD.map tagger keyCode)
+
+
+onEnter : Msg -> Attribute Msg
+onEnter msg =
+    let
+        tagger keycode =
+            if keycode == 13 then
+                msg
+
+            else
+                Noop
+    in
+    onKeydown tagger
 
 
 view : Model -> Document Msg
@@ -149,51 +193,47 @@ view model =
     in
     { title = "Say Uncle"
     , body =
-        [ if bsize == 0 then
-            text ""
+        [ div
+            [ style "background" renderStyle.backgroundColor
+            , style "color" renderStyle.lineColor
+            , style "padding" "5px"
+            ]
+            [ if settings.hideTitle then
+                text ""
 
-          else
-            div
-                [ style "background" renderStyle.backgroundColor
-                , style "color" renderStyle.lineColor
-                , style "padding" "5px"
-                ]
-                [ if settings.hideTitle then
-                    text ""
-
-                  else
-                    div
-                        [ align "center"
+              else
+                div
+                    [ align "center"
+                    ]
+                    [ h1
+                        [ style "margin" "0 0 0.2em 0"
+                        , herculanumStyle
                         ]
-                        [ h1
-                            [ style "margin" "0 0 0.2em 0"
-                            , herculanumStyle
-                            ]
-                            [ text "A•G•O•G" ]
-                        , h2
-                            [ style "margin" "0 0 0.2em 0"
-                            , herculanumStyle
-                            ]
-                            [ text "A Game of Golems" ]
-                        , p [ style "margin" "0" ]
-                            [ text "Designed by Christopher St. Clair" ]
+                        [ text "A•G•O•G" ]
+                    , h2
+                        [ style "margin" "0 0 0.2em 0"
+                        , herculanumStyle
                         ]
-                , case model.page of
-                    MainPage ->
-                        mainPage bsize model
+                        [ text "A Game of Golems" ]
+                    , p [ style "margin" "0" ]
+                        [ text "Designed by Christopher St. Clair" ]
+                    ]
+            , case model.page of
+                MainPage ->
+                    mainPage bsize model
 
-                    RulesPage ->
-                        rulesPage bsize model
+                RulesPage ->
+                    rulesPage bsize model
 
-                    InstructionsPage ->
-                        instructionsPage bsize model
+                InstructionsPage ->
+                    instructionsPage bsize model
 
-                    PublicPage ->
-                        publicPage bsize model
+                PublicPage ->
+                    publicPage bsize model
 
-                    StatisticsPage ->
-                        statisticsPage bsize model
-                ]
+                StatisticsPage ->
+                    statisticsPage bsize model
+            ]
         ]
     }
 
@@ -208,8 +248,8 @@ ids =
 winReasonToDescription : WinReason -> String
 winReasonToDescription reason =
     case reason of
-        WinByStackUsed ->
-            "by stack exhausted"
+        WinByStockUsed ->
+            "by stock exhausted"
 
         WinBySayUncle ->
             "by Say Uncle"
@@ -271,14 +311,9 @@ messageQueueDiv theStyle model =
             ]
 
 
-playerName : Player -> Game -> Maybe String
-playerName player game =
-    Dict.get player game.gameState.players
-
-
 localizedPlayerName : Player -> Game -> String
 localizedPlayerName player game =
-    case playerName player game of
+    case Dict.get player game.gameState.players of
         Nothing ->
             ""
 
@@ -290,7 +325,29 @@ localizedPlayerName player game =
                 "You (" ++ name ++ ")"
 
 
-mainPage : Int -> Model -> Html Msg
+playDescription : State -> String
+playDescription state =
+    case state of
+        InitialState ->
+            "waiting for players to join"
+
+        TableauState ->
+            "choose from tableau"
+
+        TurnStockState ->
+            "turn the stock card"
+
+        ChooseStockState ->
+            "choose or pass"
+
+        DiscardState ->
+            "discard"
+
+        GameOverState _ ->
+            "game over"
+
+
+mainPage : Size -> Model -> Html Msg
 mainPage bsize model =
     let
         settings =
@@ -303,13 +360,10 @@ mainPage bsize model =
             game.gameState
 
         players =
-            liveGameState.players
+            gameState.players
 
         hasAllPlayers =
             Dict.size players == gameState.maxPlayers
-
-        score =
-            gameState.score
 
         ( playing, message, yourTurn ) =
             if not game.isLive then
@@ -326,17 +380,17 @@ mainPage bsize model =
 
             else
                 let
-                    winString player maybeSaidUncle reason =
+                    winString winningPlayer maybeSaidUncle =
                         let
                             name =
-                                localizedPlayerName player game
+                                localizedPlayerName winningPlayer game
                         in
-                        case saidUncle of
+                        case maybeSaidUncle of
                             Nothing ->
-                                name ++ " won " ++ winReasonToDescription reason ++ "!"
+                                name ++ " won after stack exhausted!"
 
                             Just saidUncle ->
-                                if saidUncle == player then
+                                if saidUncle == winningPlayer then
                                     name ++ " won after saying Uncle!"
 
                                 else
@@ -350,11 +404,11 @@ mainPage bsize model =
                                         ++ " said Uncle!"
                 in
                 case gameState.winner of
-                    StockUsedWinner player ->
-                        ( False, winString player Nothing reason, False )
+                    StockUsedWinner winningPlayer ->
+                        ( False, winString winningPlayer Nothing, False )
 
                     SayUncleWinner { saidUncle, won } ->
-                        ( False, winString won (Just saidUncle) reason, False )
+                        ( False, winString won (Just saidUncle), False )
 
                     NoWinner ->
                         let
@@ -375,7 +429,7 @@ mainPage bsize model =
                                     , "Waiting for "
                                         ++ otherName
                                         ++ " to "
-                                        ++ playDescription
+                                        ++ playString
                                     , False
                                     )
 
@@ -410,10 +464,20 @@ mainPage bsize model =
 
         messageStyles =
             notificationStyles yourTurn playing gameState
+
+        showMessageQueueCheckBox =
+            span []
+                [ b "Show protocol: "
+                , input
+                    [ type_ "checkbox"
+                    , checked model.showMessageQueue
+                    , onCheck SetShowMessageQueue
+                    ]
+                    []
+                ]
     in
     div [ align "center" ]
-        [ Lazy.lazy6 Board.render
-            Click
+        [ Lazy.lazy3 (Board.render Click)
             bsize
             game.player
             gameState
@@ -485,39 +549,40 @@ mainPage bsize model =
               else
                 let
                     folder : Player -> Int -> List (Html Msg) -> List (Html Msg)
-                    folder player score rows =
+                    folder scorePlayer score rows =
                         let
                             playerName =
-                                if player == game.player then
+                                if scorePlayer == game.player then
                                     "You"
 
                                 else
-                                    case Dict.get player gameState.playerNames of
+                                    case Dict.get scorePlayer gameState.players of
                                         Nothing ->
                                             "[unknown]"
 
                                         Just name ->
                                             name
                         in
-                        tr
+                        tr []
                             [ td [] [ text playerName ]
                             , td [ style "text-align" "right" ]
                                 [ text <| String.fromInt score ]
                             ]
+                            :: rows
 
                     scoreRows =
-                        Dict.fold folder [] points
+                        Dict.foldr folder [] points
                 in
                 table
                     [ class "prettytable"
                     , style "color" "black"
                     ]
-                    [ tr []
-                        [ th [ text "Name" ]
-                        , th [ text "Won" ]
+                    (tr []
+                        [ th "Name"
+                        , th "Won"
                         ]
-                        :: rows
-                    ]
+                        :: scoreRows
+                    )
             , if model.showMessageQueue then
                 span []
                     [ messageQueueDiv theStyle model
@@ -534,7 +599,6 @@ mainPage bsize model =
                 , onCheck SetIsLocal
                 , disabled <|
                     (not game.isLocal && game.isLive)
-                        || showingArchiveOrMove model
                 ]
                 []
             , case model.notificationAvailable of
@@ -581,7 +645,7 @@ mainPage bsize model =
                 [ onClick NewGame
                 , disabled <|
                     (gameState.winner /= NoWinner)
-                        || (player /= 0 && not game.isLocal)
+                        || (game.player /= 0 && not game.isLocal)
                 ]
                 [ text "New Game" ]
             , div [ align "center" ]
@@ -809,12 +873,12 @@ playButton =
     Documentation.playButtonHtml <| SetPage MainPage
 
 
-instructionsPage : Int -> Model -> Html Msg
+instructionsPage : Size -> Model -> Html Msg
 instructionsPage bsize model =
     Documentation.instructions (SetPage MainPage) <| Just footerParagraph
 
 
-rulesPage : Int -> Model -> Html Msg
+rulesPage : Size -> Model -> Html Msg
 rulesPage bsize model =
     Documentation.rules (SetPage MainPage) <| Just footerParagraph
 
@@ -824,7 +888,7 @@ th string =
     Html.th [] [ text string ]
 
 
-publicPage : Int -> Model -> Html Msg
+publicPage : Size -> Model -> Html Msg
 publicPage bsize model =
     let
         game =
@@ -903,7 +967,7 @@ publicPage bsize model =
 renderPublicGameRow : String -> Bool -> Model -> PublicGameAndPlayers -> Html Msg
 renderPublicGameRow name connected model { publicGame } =
     let
-        { gameid, creator, player, forName } =
+        { gameid, creator, forName } =
             publicGame
 
         isMyGame =
@@ -931,7 +995,6 @@ renderPublicGameRow name connected model { publicGame } =
               else
                 text creator
             ]
-        , td [ center ] [ text <| playerString player ]
         , td [ center ]
             [ if isMyGame then
                 text <| Maybe.withDefault "" forName
@@ -1097,17 +1160,7 @@ roundPosix posix =
         |> Time.millisToPosix
 
 
-playerString : Player -> String
-playerString player =
-    case player of
-        WhitePlayer ->
-            "White"
-
-        BlackPlayer ->
-            "Black"
-
-
-statisticsPage : Int -> Model -> Html Msg
+statisticsPage : Size -> Model -> Html Msg
 statisticsPage bsize model =
     let
         game =
@@ -1153,34 +1206,6 @@ statisticsPage bsize model =
                                 ]
                             ]
                                 ++ List.map (statisticsRow statistics) Types.statisticsKeyOrder
-                        , case Dict.get statisticsKeys.finishedGames statistics of
-                            Nothing ->
-                                text ""
-
-                            Just finishedGames ->
-                                span []
-                                    [ case Dict.get statisticsKeys.whiteWon statistics of
-                                        Nothing ->
-                                            text ""
-
-                                        Just whiteWon ->
-                                            span []
-                                                [ b "White wins: "
-                                                , text <| String.fromInt (whiteWon * 100 // finishedGames)
-                                                , text "%"
-                                                , br
-                                                ]
-                                    , case Dict.get statisticsKeys.totalMoves statistics of
-                                        Nothing ->
-                                            text ""
-
-                                        Just totalMoves ->
-                                            span []
-                                                [ b "Average moves/game: "
-                                                , text <| String.fromInt (totalMoves // finishedGames)
-                                                , br
-                                                ]
-                                    ]
                         , case updateTime of
                             Nothing ->
                                 text ""
