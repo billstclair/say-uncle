@@ -1,0 +1,52 @@
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Say Uncle</title>
+    <meta name='wot-verification' content='5cb29ec02479d36e6dbc'/> 
+    <meta property="og:locale" content="en_US"/>
+    <meta property="og:type" content="website"/>
+    <meta property="og:title" content="Say Uncle"/>
+    <meta property="og:description" content="Say Uncle is a multi-player card game."/>
+    <meta property="og:url" content="https://say-uncle.ninja/"/>
+    <meta property="og:site_name" content="Say Uncle"/>
+    <meta property="og:image" content="https://mammudeck.com/images/mammoth-500x360.png"/>
+    <meta property="og:image:width" content="500"/>
+    <meta property="og:image:height" content="360"/>
+    <link href='/images/icon-180.png' rel='apple-touch-icon' sizes='180x180'>
+    <link rel="manifest" href="manifest.webmanifest">
+
+    <script type='text/javascript' src='elm.js'></script>
+
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="viewport" content="user-scalable=no, width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+  </head>
+  <body style='width: 40em; margin: auto; margin-top: 2em;'>
+    <!--<noscript>-->
+      <h2 style='text-align: center;'>Say Uncle</h2>
+      <p>Say Uncle is a multi-player card game designed by Christopher St. Clair.</p>
+      <p>Insructions are in <a href='say-uncle.pdf'>say-uncle.pdf</a>.</p>
+      <p><a href='cards.html'>Show cards</a></p>
+      <p><a href='render.html'>Two-player simulation</a></p>
+      <!--
+      <p style='font-color: red;'>
+        <b>Say Uncle requires JavaScript to function. Without JavaScript,
+          this page is all you'll ever see.</b>
+      </p>
+      -->
+      <p style='text-align: center;'>
+        <a href='https://github.com/billstclair/say-uncle'>GitHub</a>
+      </p>
+      <!--</noscript>-->
+    <script type='text/javascript'>
+      // It's an application, so it doesn't need a div.
+      var app = Elm['Main'].init({ flags: true });
+      PortFunnel.subscribe(app);
+      var openWindow = app.ports.openWindow;
+      if (openWindow) {
+        openWindow.subscribe(function(url) {
+          window.open(url, '_blank');
+        });
+      }
+    </script>
+  </body>
+</html>
