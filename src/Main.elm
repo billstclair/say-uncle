@@ -137,7 +137,7 @@ isPlaying model =
 main =
     Browser.application
         { init = init
-        , view = view
+        , view = UI.view
         , update = update
         , subscriptions = subscriptions
         , onUrlRequest = HandleUrlRequest
@@ -1684,6 +1684,25 @@ updateInternal msg model =
 
         SetName name ->
             { model | settings = { settings | name = name } }
+                |> withNoCmd
+
+        SetMaxPlayersString maxPlayersString ->
+            let
+                maxPlayers =
+                    case String.toInt maxPlayersString of
+                        Nothing ->
+                            settings.maxPlayers
+
+                        Just mp ->
+                            mp
+            in
+            { model
+                | settings =
+                    { settings
+                        | maxPlayersString = maxPlayersString
+                        , maxPlayers = maxPlayers
+                    }
+            }
                 |> withNoCmd
 
         SetIsPublic isPublic ->

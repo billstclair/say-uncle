@@ -197,6 +197,7 @@ type alias Size =
 
 type alias Settings =
     { name : String
+    , maxPlayersString : String
     , maxPlayers : Int
     , winningPoints : Int
     , isPublic : Bool
@@ -208,6 +209,7 @@ type alias Settings =
 emptySettings : Settings
 emptySettings =
     { name = ""
+    , maxPlayersString = "3"
     , maxPlayers = 3
     , winningPoints = 10
     , isPublic = False
@@ -788,6 +790,7 @@ type Msg
     | SetIsLocal Bool
     | SetDarkMode Bool
     | SetName String
+    | SetMaxPlayersString String
     | SetIsPublic Bool
     | SetForName String
     | SetServerUrl String

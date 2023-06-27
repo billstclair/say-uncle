@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Say Uncle</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <link rel='stylesheet' href='style.css'>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link href='/images/icon-192.png' rel='apple-touch-icon' sizes='192x192'>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <script type='text/javascript' src='js/PortFunnel.js'></script>
+    <script type='text/javascript' src='js/PortFunnel/LocalStorage.js'></script>
+    <script type='text/javascript' src='js/PortFunnel/WebSocket.js'></script>
+    <script type='text/javascript' src='js/PortFunnel/Notification.js'></script>
+    <script type='text/javascript' src='elm.js'></script>
+    </script>
+  </head>
+  <body style='overflow: auto;'>
+    <script type='text/javascript'>
+      // It's an application, so it doesn't need a div.
+      var app = Elm['Main'].init({ flags: true });
+
+      var modules = ['LocalStorage', 'Notification', 'WebSocket'];
+      PortFunnel.subscribe(app, {modules: modules});
+
+      var onVisibilityChange = app.ports.onVisibilityChange;
+      document.addEventListener(
+          'visibilitychange',
+          function() {
+              onVisibilityChange.send(document.visibilityState == 'visible');
+          }
+      );                                
+
+      // From https://stackoverflow.com/a/54119854
+      // Fixes delay in Safari.
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      var audioCtx = null;
+      if (AudioContext) {
+          audioCtx = new AudioContext();
+          // Suspending the audio context when we're not using it
+          // prevents music from stopping on iOS, except when you
+          // actually play a sound. I don't know how to get it to mix
+          // with the playing music.
+          audioCtx.suspend();
+      }
+
+      var sounds = {};
+
+      function makeAudio(file) {
+        var audio = new Audio(file);
+        if (audioCtx) {
+          audio.addEventListener('ended', function(event) {
+            audioCtx.suspend();
+          });
+        }
+        return audio;
+      }
+      var files = ['jump.mp3', 'move.mp3'];
+      for (var i = 0; i < files.length; i++) {
+          var file = 'sounds/' + files[i];
+          sounds[file] = makeAudio(file);
+      }
+      app.ports.playAudio.subscribe(function(file) {
+          var audio = sounds[file];
+          if (!audio) {
+              audio = makeAudio(file);
+              sounds[file] = audio;
+          }
+          if (audioCtx) {
+            audioCtx.resume().then(function() {
+              audio.play();
+            });
+          } else {
+            audio.play();
+          }
+      });
+    </script>
+
+   <noscript>
+    <center>
+      <h1>Say Uncle</h1>
+      <div style='display: inline-block; margin: auto;'>
+        <p><a href='./'>Say Uncle</a> is a board game designed by Christopher St. Clair.
+        <p style='color: red; font-size: 120%;'>Say Uncle requires a JavaScript-enabled browser to get more than this static page.</p>
+        <p>&copy; 2019-2023 Bill St. Clair<br/>
+          <a href='https://github.com/billstclair/agog'>GitHub</a></p>
+      </div>
+    </center>
+   </noscript>
+   
+
+</body>
+</html>

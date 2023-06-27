@@ -186,7 +186,7 @@ view model =
             boardSize model
 
         settings =
-            model.settings
+            Debug.log "UI.render: model.settings" model.settings
 
         renderStyle =
             Types.typeToStyle model.styleType
@@ -209,12 +209,12 @@ view model =
                         [ style "margin" "0 0 0.2em 0"
                         , herculanumStyle
                         ]
-                        [ text "A•G•O•G" ]
+                        [ text "Say Uncle" ]
                     , h2
                         [ style "margin" "0 0 0.2em 0"
                         , herculanumStyle
                         ]
-                        [ text "A Game of Golems" ]
+                        [ text "A Multi-Player Card Game" ]
                     , p [ style "margin" "0" ]
                         [ text "Designed by Christopher St. Clair" ]
                     ]
@@ -669,6 +669,14 @@ mainPage bsize model =
                             ]
                             []
                         , br
+                        , b "Max players: "
+                        , input
+                            [ onInput SetMaxPlayersString
+                            , value settings.maxPlayersString
+                            , size 20
+                            ]
+                            []
+                        , br
 
                         {-
                            , b "Server: "
@@ -724,8 +732,7 @@ mainPage bsize model =
                                 (settings.name == "")
                                     || (model.gameid == "")
                             ]
-                            [ text "Join"
-                            ]
+                            [ text "Join" ]
                         ]
                 ]
             ]
