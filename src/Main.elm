@@ -692,7 +692,7 @@ incomingMessage interface message mdl =
                 Just gameid ->
                     let
                         maybeGame2 =
-                            if gameid == model.gameid then
+                            if gameid /= model.gameid then
                                 Nothing
 
                             else
