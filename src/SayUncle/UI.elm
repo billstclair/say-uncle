@@ -669,7 +669,7 @@ mainPage bsize model =
                             ]
                             []
                         , br
-                        , b "Max players: "
+                        , b "Max Players: "
                         , input
                             [ onInput SetMaxPlayersString
                             , value settings.maxPlayersString
@@ -848,7 +848,7 @@ footerParagraph =
         , text ">"
         , br
         , a
-            [ href "https://github.com/billstclair/say-uncle/blob/main/LICENSE"
+            [ href "./LICENSE"
             , target "_blank"
             ]
             [ text "MIT License" ]

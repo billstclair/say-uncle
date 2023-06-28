@@ -579,8 +579,8 @@ reconnectToGame game model =
                 (ConnectionSpec <| UpdateConnection game.playerid)
 
     else if game.isLocal then
-        model
-            |> withCmd (initialNewReqCmd game model)
+        model |> withNoCmd
+        --            |> withCmd (initialNewReqCmd game model)
 
     else
         -- Need to set gameid to ""?
@@ -1327,6 +1327,7 @@ connectedResponse model =
 
 processConnectionReason : Game -> ConnectionReason -> Model -> Cmd Msg
 processConnectionReason game connectionReason model =
+    -- Get here by pressing the "Start Session" button.
     let
         interface =
             game.interface
@@ -2063,9 +2064,13 @@ webSocketConnect game spec model =
                     , interfaceIsProxy = True
                     , isLive = True
                 }
+
+            mdl =
+                { model | game = newGame }
         in
-        { model | game = game }
-            |> withNoCmd
+        mdl
+            |> withCmd
+                (processConnectionReason newGame spec.connectionReason mdl)
 
     else
         let
@@ -2091,9 +2096,23 @@ webSocketConnect game spec model =
 
 startGame : Model -> ( Model, Cmd Msg )
 startGame model =
-    webSocketConnect model.game
-        (ConnectionSpec StartGameConnection)
-        model
+    let
+        settings =
+            model.settings
+    in
+    case String.toInt settings.maxPlayersString of
+        Nothing ->
+            { model
+                | error = Just "Max Players must be an integer"
+            }
+                |> withNoCmd
+
+        Just maxPlayers ->
+            webSocketConnect model.game
+                (ConnectionSpec StartGameConnection)
+                { model
+                    | settings = { settings | maxPlayers = maxPlayers }
+                }
 
 
 join : Model -> Bool -> ( Model, Cmd Msg )

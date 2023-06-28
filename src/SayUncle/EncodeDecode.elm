@@ -1644,12 +1644,13 @@ messageToLogMessage message =
             JE.encode 0 (encodeGameState True gameState)
     in
     case message of
-        NewReq { name, publicType, maxPlayers, winningPoints, restoreState, maybeGameid } ->
+        NewReq { name, publicType, maxPlayers, winningPoints, seedInt, restoreState, maybeGameid } ->
             NewReqLog
                 { name = name
                 , publicType = publicType
                 , maxPlayers = maxPlayers
                 , winningPoints = winningPoints
+                , seedInt = seedInt
                 , restoreState =
                     case restoreState of
                         Nothing ->

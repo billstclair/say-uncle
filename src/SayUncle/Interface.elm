@@ -90,10 +90,11 @@ errorRes : Message -> Types.ServerState -> String -> ( Types.ServerState, Maybe 
 errorRes message state text =
     ( state
     , Just <|
-        ErrorRsp
-            { request = WSFED.encodeMessage ED.messageEncoder message
-            , text = text
-            }
+        Debug.log "errorRes" <|
+            ErrorRsp
+                { request = WSFED.encodeMessage ED.messageEncoder message
+                , text = text
+                }
     )
 
 
@@ -214,7 +215,10 @@ generalMessageProcessor : Bool -> Types.ServerState -> Message -> ( Types.Server
 generalMessageProcessor isProxyServer state message =
     let
         ( newState, response ) =
-            generalMessageProcessorInternal isProxyServer state message
+            generalMessageProcessorInternal isProxyServer
+                state
+            <|
+                Debug.log "Interface.generalMessageProcessor" message
 
         newState2 =
             if isProxyServer || state.statistics == newState.statistics then
@@ -232,7 +236,7 @@ generalMessageProcessor isProxyServer state message =
             else
                 newState2
     in
-    ( newState3, response )
+    ( newState3, Debug.log "  response" response )
 
 
 logInterfaceSeed : String -> Types.GameInterface -> Types.GameInterface

@@ -543,6 +543,7 @@ type MessageForLog
         , publicType : PublicType
         , maxPlayers : Int
         , winningPoints : Int
+        , seedInt : Int
         , restoreState : Maybe String
         , maybeGameid : Maybe GameId
         }
