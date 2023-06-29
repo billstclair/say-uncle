@@ -288,8 +288,11 @@ setNextPlayer gameState =
 generalMessageProcessorInternal : Bool -> Types.ServerState -> Message -> ( Types.ServerState, Maybe Message )
 generalMessageProcessorInternal isProxyServer state message =
     case message of
-        NewReq { name, publicType, maxPlayers, winningPoints, seedInt, restoreState, maybeGameid } ->
+        (NewReq { name, publicType, maxPlayers, winningPoints, seedInt, restoreState, maybeGameid }) as messageRecord ->
             let
+                mr =
+                    Debug.log "generalMessageProcessorInternal, messageRecord" messageRecord
+
                 gameidError =
                     case maybeGameid of
                         Nothing ->
