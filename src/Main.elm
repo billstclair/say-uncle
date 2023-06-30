@@ -1,4 +1,4 @@
----------------------------------------------------------------------
+--------------------------------------------------------------------
 --
 -- Main.elm
 -- Say Uncle top-level
@@ -2170,18 +2170,9 @@ disconnect model =
     { model | game = game2 }
         |> withCmds
             [ putGame game2
-            , if game.isLive && not game.isLocal then
+            , if game.isLive then
                 send model.game.isLocal model.game.interface <|
                     LeaveReq { playerid = game.playerid }
-
-              else
-                Cmd.none
-            , if game.isLocal then
-                send model.game.isLocal model.game.interface <|
-                    SetGameStateReq
-                        { playerid = game.playerid
-                        , gameState = gameState
-                        }
 
               else
                 Cmd.none

@@ -220,6 +220,15 @@ generalMessageProcessor isProxyServer state message =
             <|
                 Debug.log "Interface.generalMessageProcessor" message
 
+        _ =
+            Debug.log "  response" <|
+                case response of
+                    Nothing ->
+                        Nothing
+
+                    Just mess ->
+                        Just <| ED.messageToLogMessage mess
+
         newState2 =
             if isProxyServer || state.statistics == newState.statistics then
                 newState
@@ -236,7 +245,7 @@ generalMessageProcessor isProxyServer state message =
             else
                 newState2
     in
-    ( newState3, Debug.log "  response" response )
+    ( newState3, response )
 
 
 logInterfaceSeed : String -> Types.GameInterface -> Types.GameInterface

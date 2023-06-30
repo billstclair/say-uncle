@@ -644,7 +644,7 @@ mainPage bsize model =
             , button
                 [ onClick NewGame
                 , disabled <|
-                    (gameState.winner /= NoWinner)
+                    (gameState.winner == NoWinner)
                         || (game.player /= 0 && not game.isLocal)
                 ]
                 [ text "New Game" ]
