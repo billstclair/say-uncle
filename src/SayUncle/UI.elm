@@ -28,6 +28,7 @@ import Html
         , audio
         , blockquote
         , button
+        , caption
         , div
         , embed
         , fieldset
@@ -583,6 +584,29 @@ mainPage bsize model =
                         ]
                         :: scoreRows
                     )
+            , if Dict.size gameState.players == 0 then
+                text ""
+
+              else
+                let
+                    folder : Int -> String -> List (Html Msg) -> List (Html Msg)
+                    folder n name res =
+                        [ td [ style "text-align" "right" ]
+                            [ text <| String.fromInt n ]
+                        , td [ style "text-align" "left" ]
+                            [ text name ]
+                        ]
+                            ++ res
+                in
+                span []
+                    [ br
+                    , br
+                    , table [ class "prettytable" ] <|
+                        [ caption [ style "font-weight" "bold" ]
+                            [ text <| "==" ++ chars.nbsp ++ "Players" ++ chars.nbsp ++ "==" ]
+                        ]
+                            ++ Dict.foldr folder [] gameState.players
+                    ]
             , if model.showMessageQueue then
                 span []
                     [ messageQueueDiv theStyle model
