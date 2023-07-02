@@ -591,10 +591,12 @@ mainPage bsize model =
                 let
                     folder : Int -> String -> List (Html Msg) -> List (Html Msg)
                     folder n name res =
-                        [ td [ style "text-align" "right" ]
-                            [ text <| String.fromInt n ]
-                        , td [ style "text-align" "left" ]
-                            [ text name ]
+                        [ tr []
+                            [ td [ style "text-align" "right" ]
+                                [ text <| String.fromInt n ]
+                            , td [ style "text-align" "left" ]
+                                [ text name ]
+                            ]
                         ]
                             ++ res
                 in
@@ -681,6 +683,22 @@ mainPage bsize model =
                         , button
                             [ onClick Disconnect ]
                             [ text "Disconnect" ]
+                        ]
+
+                  else
+                    text ""
+                , if
+                    (gameState.maxPlayers > 0)
+                        && (Dict.size gameState.players >= gameState.maxPlayers)
+                  then
+                    div [ align "center" ]
+                        [ b "Your Name:"
+                        , input
+                            [ value settings.name
+                            , size 20
+                            , disabled True
+                            ]
+                            []
                         ]
 
                   else
