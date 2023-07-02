@@ -692,71 +692,95 @@ mainPage bsize model =
                             , size 20
                             ]
                             []
-                        , br
-                        , b "Max Players: "
-                        , input
-                            [ onInput SetMaxPlayersString
-                            , value settings.maxPlayersString
-                            , size 20
-                            ]
-                            []
-                        , br
-
-                        {-
-                           , b "Server: "
-                           , input
-                               [ onInput SetServerUrl
-                               , value model.serverUrl
-                               , size 40
-                               , disabled True
-                               ]
-                               []
-                           , text " "
-                        -}
-                        , b "Public: "
-                        , input
-                            [ type_ "checkbox"
-                            , checked settings.isPublic
-                            , onCheck SetIsPublic
-                            ]
-                            []
-                        , if not settings.isPublic then
-                            text ""
+                        , if Dict.size gameState.players > 0 then
+                            span []
+                                [ br
+                                , b "Max Players: "
+                                , text settings.maxPlayersString
+                                , br
+                                , b "Public: "
+                                , input
+                                    [ type_ "checkbox"
+                                    , checked settings.isPublic
+                                    , onCheck SetIsPublic
+                                    , disabled True
+                                    ]
+                                    []
+                                , text " "
+                                , button
+                                    [ onClick <| JoinGame game.gameid
+                                    ]
+                                    [ text "Join" ]
+                                ]
 
                           else
                             span []
-                                [ b " for name: "
+                                [ br
+                                , b "Max Players: "
                                 , input
-                                    [ onInput SetForName
-                                    , value settings.forName
+                                    [ onInput SetMaxPlayersString
+                                    , value settings.maxPlayersString
                                     , size 20
-                                    , id ids.forName
                                     ]
                                     []
+                                , br
+
+                                {-
+                                   , b "Server: "
+                                   , input
+                                   [ onInput SetServerUrl
+                                   , value model.serverUrl
+                                   , size 40
+                                   , disabled True
+                                   ]
+                                   []
+                                   , text " "
+                                -}
+                                , b "Public: "
+                                , input
+                                    [ type_ "checkbox"
+                                    , checked settings.isPublic
+                                    , onCheck SetIsPublic
+                                    ]
+                                    []
+                                , if not settings.isPublic then
+                                    text ""
+
+                                  else
+                                    span []
+                                        [ b " for name: "
+                                        , input
+                                            [ onInput SetForName
+                                            , value settings.forName
+                                            , size 20
+                                            , id ids.forName
+                                            ]
+                                            []
+                                        ]
+                                , text " "
+                                , button
+                                    [ onClick StartGame
+                                    , disabled <| settings.name == ""
+                                    ]
+                                    [ text "Start Session" ]
+                                , br
+                                , b "Session ID: "
+                                , input
+                                    [ onInput SetGameid
+                                    , value model.gameid
+                                    , size 16
+                                    , onEnter Join
+                                    ]
+                                    []
+                                , text " "
+                                , button
+                                    [ onClick Join
+                                    , disabled <|
+                                        (settings.name == "")
+                                            || (model.gameid == "")
+                                    ]
+                                    [ text "Join" ]
                                 ]
-                        , text " "
-                        , button
-                            [ onClick StartGame
-                            , disabled <| settings.name == ""
-                            ]
-                            [ text "Start Session" ]
-                        , br
-                        , b "Session ID: "
-                        , input
-                            [ onInput SetGameid
-                            , value model.gameid
-                            , size 16
-                            , onEnter Join
-                            ]
-                            []
-                        , text " "
-                        , button
-                            [ onClick Join
-                            , disabled <|
-                                (settings.name == "")
-                                    || (model.gameid == "")
-                            ]
-                            [ text "Join" ]
                         ]
                 ]
             ]
