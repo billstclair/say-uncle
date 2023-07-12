@@ -12,12 +12,14 @@
 
 port module Main exposing (main)
 
+import Array exposing (Array)
 import Browser exposing (Document, UrlRequest(..))
 import Browser.Dom as Dom exposing (Viewport)
 import Browser.Events as Events
 import Browser.Navigation as Navigation exposing (Key)
 import Char
 import Cmd.Extra exposing (withCmd, withCmds, withNoCmd)
+import Deck
 import Dict exposing (Dict)
 import Dict.Extra as DE
 import ElmChat exposing (LineSpec(..), defaultExtraAttributes)
@@ -65,6 +67,7 @@ import SayUncle.Types as Types
         , Score
         , ServerState
         , Settings
+        , State(..)
         , StatisticsKeys
         , Style
         , StyleType(..)
@@ -771,59 +774,34 @@ incomingMessageInternal interface maybeGame message model =
     in
     case message of
         NewRsp { gameid, playerid, player, name, gameState, wasRestored } ->
-            if maybeGame /= Nothing && not wasRestored then
-                case maybeGame of
-                    Nothing ->
-                        -- Can't happen
-                        ( Nothing, model |> withNoCmd )
+            let
+                game =
+                    model.game
 
-                    Just game ->
-                        let
-                            returnedGame =
-                                if game.isLocal then
-                                    -- Otherwise, there's no way out in the UI.
-                                    Just { game | isLive = False }
+                ( model2, chatCmd ) =
+                    clearChatSettings True model
 
-                                else
-                                    Nothing
-                        in
-                        ( returnedGame
-                        , { model
-                            | error =
-                                -- This is actually remotely possible, if the
-                                -- remote server happens to randomly generate a
-                                -- gameid that matches a local one (or vice-versa).
-                                Just <| "Bug: NewRsp found existing session id: " ++ gameid
-                          }
-                            |> withNoCmd
-                        )
+                game2 =
+                    { game
+                        | gameid = gameid
+                        , gameState = gameState
+                        , player = player
+                        , playerid = playerid
+                        , isLive = True
+                        , interface = interface
+                    }
+                        |> nextPlayer
 
-            else
-                let
-                    game =
-                        model.game
-
-                    ( model2, chatCmd ) =
-                        clearChatSettings True model
-
-                    game2 =
-                        { game
-                            | gameid = gameid
-                            , gameState = gameState
-                            , player = player
-                            , playerid = playerid
-                            , isLive = True
-                            , interface = interface
-                        }
-                            |> nextPlayer
-
-                    model3 =
-                        { model2 | game = game2 }
-                in
-                ( Just game2
-                , model3
-                    |> withCmd chatCmd
-                )
+                model3 =
+                    { model2
+                        | game = game2
+                        , gameid = gameid
+                    }
+            in
+            ( Just game2
+            , model3
+                |> withCmd chatCmd
+            )
 
         JoinRsp { gameid, playerid, gameState } ->
             let
@@ -1706,6 +1684,25 @@ updateInternal msg model =
             }
                 |> withNoCmd
 
+        SetWinningPointsString winningPointsString ->
+            let
+                winningPoints =
+                    case String.toInt winningPointsString of
+                        Nothing ->
+                            settings.winningPoints
+
+                        Just wp ->
+                            wp
+            in
+            { model
+                | settings =
+                    { settings
+                        | winningPointsString = winningPointsString
+                        , winningPoints = winningPoints
+                    }
+            }
+                |> withNoCmd
+
         SetIsPublic isPublic ->
             { model | settings = { settings | isPublic = isPublic } }
                 |> withCmd
@@ -2156,7 +2153,22 @@ disconnect model =
                     gs =
                         game.gameState
                 in
-                { gs | score = Types.zeroScore }
+                { gs
+                    | board =
+                        { tableau = Array.empty
+                        , stock = Deck.newDeck []
+                        , turnedStock = Nothing
+                        , hands = Array.empty
+                        , seed = gs.board.seed
+                        }
+                    , score = Types.zeroScore
+                    , players = Dict.empty
+                    , player = 0
+                    , whoseTurn = 0
+                    , state = InitialState
+                    , winner = NoWinner
+                    , matchWinner = Nothing
+                }
 
         game2 =
             if not game.isLocal then

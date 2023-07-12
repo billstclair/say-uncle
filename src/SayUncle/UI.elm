@@ -623,8 +623,7 @@ mainPage bsize model =
                 [ type_ "checkbox"
                 , checked game.isLocal
                 , onCheck SetIsLocal
-                , disabled <|
-                    (not game.isLocal && game.isLive)
+                , disabled game.isLive
                 ]
                 []
             , case model.notificationAvailable of
@@ -716,6 +715,9 @@ mainPage bsize model =
                                 , b "Max Players: "
                                 , text settings.maxPlayersString
                                 , br
+                                , b "Winning Points: "
+                                , text settings.winningPointsString
+                                , br
                                 , b "Public: "
                                 , input
                                     [ type_ "checkbox"
@@ -738,6 +740,14 @@ mainPage bsize model =
                                 , input
                                     [ onInput SetMaxPlayersString
                                     , value settings.maxPlayersString
+                                    , size 20
+                                    ]
+                                    []
+                                , br
+                                , b "Winning Points: "
+                                , input
+                                    [ onInput SetWinningPointsString
+                                    , value settings.winningPointsString
                                     , size 20
                                     ]
                                     []

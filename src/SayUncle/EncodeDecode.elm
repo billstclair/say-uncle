@@ -478,11 +478,12 @@ boardDecoder =
 
 
 encodeSettings : Settings -> Value
-encodeSettings { name, maxPlayersString, maxPlayers, winningPoints, isPublic, forName, hideTitle } =
+encodeSettings { name, maxPlayersString, maxPlayers, winningPointsString, winningPoints, isPublic, forName, hideTitle } =
     JE.object
         [ ( "name", JE.string name )
         , ( "maxPlayersString", JE.string maxPlayersString )
         , ( "maxPlayers", JE.int maxPlayers )
+        , ( "winningPointsString", JE.string winningPointsString )
         , ( "winningPoints", JE.int winningPoints )
         , ( "isPublic", JE.bool isPublic )
         , ( "forName", JE.string forName )
@@ -496,6 +497,7 @@ settingsDecoder =
         |> required "name" JD.string
         |> required "maxPlayersString" JD.string
         |> required "maxPlayers" JD.int
+        |> required "winningPointsString" JD.string
         |> required "winningPoints" JD.int
         |> optional "isPublic" JD.bool False
         |> optional "forName" JD.string ""
