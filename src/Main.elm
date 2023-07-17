@@ -1803,7 +1803,7 @@ updateInternal msg model =
 
             else if game.player /= 0 && not game.isLocal then
                 { model
-                    | error = Just "Only the game creator can start a new game."
+                    | error = Just "Only the game creator can start a game."
                 }
                     |> withNoCmd
 

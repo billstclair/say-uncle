@@ -417,7 +417,11 @@ generalMessageProcessorInternal isProxyServer state message =
                         nextPlayer =
                             Dict.size players
                     in
-                    if gameState.maxPlayers <= nextPlayer then
+                    let
+                        removePublicGame =
+                            nextPlayer >= gameState.maxPlayers
+                    in
+                    if removePublicGame then
                         errorRes message
                             state
                             "Game already has all players."
@@ -446,21 +450,16 @@ generalMessageProcessorInternal isProxyServer state message =
                                     state2
 
                             gameState2 =
-                                { gameState | players = players2 }
+                                { gameState
+                                    | players = players2
+                                    , board = Board.dealPlayer gameState.board nextPlayer
+                                }
 
                             state4 =
                                 ServerInterface.updateGame gameid
                                     gameState2
                                     state3
                                     |> bumpStatistic .activeGames
-
-                            removePublicGame =
-                                if nextPlayer <= gameState.maxPlayers - 1 then
-                                    False
-
-                                else
-                                    List.any (\pg -> gameid == pg.gameid)
-                                        state4.publicGames
 
                             state5 =
                                 if not removePublicGame then

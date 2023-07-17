@@ -11,7 +11,8 @@
 
 
 module SayUncle.Board exposing
-    ( empty
+    ( dealPlayer
+    , empty
     , getPlayerName
     , initial
     , isTableauEmpty
@@ -198,6 +199,54 @@ shuffle board =
     initial (Array.length board.hands) board.seed
 
 
+dealCards : Int -> ShuffledDeck -> ( List Card, ShuffledDeck )
+dealCards count deck =
+    let
+        loop : Int -> ( List Card, ShuffledDeck ) -> ( List Card, ShuffledDeck )
+        loop cnt ( cards, restDeck ) =
+            if cnt <= 0 then
+                ( cards, restDeck )
+
+            else
+                let
+                    ( card, deckMinusOne ) =
+                        Deck.draw restDeck
+                in
+                loop (cnt - 1) ( card :: cards, deckMinusOne )
+    in
+    loop count ( [], deck )
+
+
+dealPlayer : Board -> Player -> Board
+dealPlayer board player =
+    let
+        hands =
+            board.hands
+
+        tableau =
+            board.tableau
+
+        stock =
+            board.stock
+    in
+    if Array.get player hands /= Nothing then
+        board
+
+    else
+        let
+            ( hand, stock2 ) =
+                dealCards 5 stock
+
+            ( tab, stock3 ) =
+                dealCards 5 stock2
+        in
+        { board
+            | tableau = Array.fromList (Array.toList tableau ++ List.map Just tab)
+            , hands = Array.push (sortCards hand) hands
+            , stock = stock3
+        }
+
+
 
 ---
 --- Rendering
@@ -296,6 +345,9 @@ renderTableau wrapper windowSize tableau =
         { cardsPerRow, marginx, cardWidth, cardHeight } =
             getCardsPerRow windowSize
 
+        rowCnt =
+            (Array.length tableau + cardsPerRow - 1) // cardsPerRow
+
         loop : Int -> ( Int, Int ) -> List (Svg msg) -> List (Svg msg)
         loop cnt ( x, y ) res =
             if cnt < 0 then
@@ -305,7 +357,7 @@ renderTableau wrapper windowSize tableau =
                 let
                     ( nextx, nexty ) =
                         if modBy cardsPerRow cnt == 0 then
-                            ( marginx, y + cardHeight + 5 )
+                            ( marginx, y - cardHeight - 5 )
 
                         else
                             ( x + cardWidth + 5, y )
@@ -336,7 +388,7 @@ renderTableau wrapper windowSize tableau =
                         loop (cnt - 1) ( nextx, nexty ) res
 
         svgs =
-            loop (Array.length tableau - 1) ( marginx, 5 ) []
+            loop (Array.length tableau - 1) ( marginx, 5 + (rowCnt - 1) * (cardHeight + 5) ) []
 
         totalHeight =
             (cardHeight
