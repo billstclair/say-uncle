@@ -146,6 +146,7 @@ init _ =
         , state = TableauState
         , score = Types.zeroScore
         , winner = NoWinner
+        , matchWinner = Nothing
         , private = Types.emptyPrivateGameState
         }
     , time = 0

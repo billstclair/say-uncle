@@ -345,24 +345,27 @@ renderTableau wrapper windowSize tableau =
         { cardsPerRow, marginx, cardWidth, cardHeight } =
             getCardsPerRow windowSize
 
+        cnt =
+            Array.length tableau
+
         rowCnt =
-            (Array.length tableau + cardsPerRow - 1) // cardsPerRow
+            (cnt + cardsPerRow - 1) // cardsPerRow
 
         loop : Int -> ( Int, Int ) -> List (Svg msg) -> List (Svg msg)
-        loop cnt ( x, y ) res =
-            if cnt < 0 then
+        loop idx ( x, y ) res =
+            if idx >= cnt then
                 res
 
             else
                 let
                     ( nextx, nexty ) =
-                        if modBy cardsPerRow cnt == 0 then
-                            ( marginx, y - cardHeight - 5 )
+                        if modBy cardsPerRow (idx + 1) == 0 then
+                            ( marginx, y + cardHeight + 5 )
 
                         else
                             ( x + cardWidth + 5, y )
                 in
-                case Array.get cnt tableau of
+                case Array.get idx tableau of
                     Just (Just card) ->
                         let
                             description =
@@ -382,13 +385,13 @@ renderTableau wrapper windowSize tableau =
                                     ]
                                     [ description.svg ]
                         in
-                        loop (cnt - 1) ( nextx, nexty ) <| cardSvg :: res
+                        loop (idx + 1) ( nextx, nexty ) <| cardSvg :: res
 
                     _ ->
-                        loop (cnt - 1) ( nextx, nexty ) res
+                        loop (idx + 1) ( nextx, nexty ) res
 
         svgs =
-            loop (Array.length tableau - 1) ( marginx, 5 + (rowCnt - 1) * (cardHeight + 5) ) []
+            loop 0 ( marginx, 5 ) []
 
         totalHeight =
             (cardHeight
