@@ -1342,6 +1342,10 @@ processConnectionReason game connectionReason model =
 
         JoinGameConnection gameid inCrowd ->
             send isLocal interface <|
+                let
+                    i =
+                        debugInterface interface
+                in
                 JoinReq
                     { gameid = gameid
                     , name = model.settings.name
@@ -1412,6 +1416,11 @@ processConnectionReason game connectionReason model =
                                 { gameid = gameid
                                 , name = name
                                 }
+
+
+debugInterface : GameInterface -> GameInterface
+debugInterface interface =
+    interface
 
 
 focusId : String -> Cmd Msg
