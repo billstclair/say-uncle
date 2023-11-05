@@ -582,8 +582,8 @@ reconnectToGame game model =
                 (ConnectionSpec <| UpdateConnection game.playerid)
 
     else if game.isLocal then
-        model |> withNoCmd
-        --            |> withCmd (initialNewReqCmd game model)
+        model
+            |> withCmd (initialNewReqCmd game model)
 
     else
         -- Need to set gameid to ""?
